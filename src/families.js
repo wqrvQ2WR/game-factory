@@ -52,6 +52,28 @@ export const FAMILIES = {
       if (p.shoot) a.push('발사: Space / 클릭');
       return a.join('   ·   ');
     },
+    // 제작기(maker.html)에서 손으로 굴릴 노브. params()의 범위와 맞춰 둔다.
+    knobs: [
+      { k: 'enemyMode', n: '적 행동', type: 'sel', opts: ['chase', 'drift', 'rain', 'orbit'] },
+      { k: 'edge', n: '화면 경계', type: 'sel', opts: ['wall', 'wrap', 'bounce'] },
+      { k: 'enemyRate', n: '적 스폰(초당)', min: 0.2, max: 4, step: 0.05 },
+      { k: 'enemySpeed', n: '적 속도', min: 50, max: 420, step: 5 },
+      { k: 'enemyMax', n: '적 최대 수', min: 5, max: 60, step: 1 },
+      { k: 'speed', n: '내 속도', min: 150, max: 520, step: 5 },
+      { k: 'pickupRate', n: '수집품 스폰', min: 0, max: 1.5, step: 0.05 },
+      { k: 'pickupScore', n: '수집 점수', min: 0, max: 100, step: 1 },
+      { k: 'magnet', n: '자석 반경', min: 0, max: 220, step: 5 },
+      { k: 'shrink', n: '무대 축소', min: 0, max: 20, step: 1 },
+      { k: 'darkness', n: '시야 반경(0=끔)', min: 0, max: 400, step: 10 },
+      { k: 'gravity', n: '중력(0=탑다운)', min: 0, max: 2200, step: 50 },
+      { k: 'lives', n: '목숨', min: 1, max: 9, step: 1 },
+      { k: 'timeLimit', n: '제한시간(0=무제한)', min: 0, max: 180, step: 5 },
+      { k: 'ramp', n: '난이도 상승', min: 0, max: 0.12, step: 0.005 },
+      { k: 'shoot', n: '발사 가능', type: 'bool' },
+      { k: 'rival', n: '라이벌 AI', type: 'bool' },
+      { k: 'combo', n: '콤보 배수', type: 'bool' },
+    ],
+    derive(p) { if (p.gravity && p.edge === 'wrap') p.edge = 'wall'; }, // 바닥이 사라지는 조합 차단
     // 아케이드 목표 점수 추정: 그 게임의 채점식으로 '괜찮게 플레이했을 때' 정도
     est(p) {
       const T = p.timeLimit || 45;
@@ -100,6 +122,23 @@ export const FAMILIES = {
       const L = ['S', 'D', 'F', 'J', 'K', 'L'].slice(0, p.lanes).join(' ');
       return `노트가 판정선에 닿을 때 해당 레인 키: ${L}`;
     },
+    knobs: [
+      { k: 'lanes', n: '레인 수', min: 4, max: 6, step: 1 },
+      { k: 'bpm', n: 'BPM', min: 70, max: 200, step: 1 },
+      { k: 'subdiv', n: '박자 분할', min: 1, max: 4, step: 1 },
+      { k: 'density', n: '노트 밀도', min: 0.15, max: 0.95, step: 0.01 },
+      { k: 'noteSpeed', n: '노트 속도', min: 250, max: 800, step: 10 },
+      { k: 'perfectWindow', n: 'PERFECT 판정폭', min: 15, max: 60, step: 1 },
+      { k: 'goodWindow', n: 'GOOD 판정폭', min: 40, max: 120, step: 1 },
+      { k: 'perfectScore', n: 'PERFECT 점수', min: 20, max: 200, step: 5 },
+      { k: 'lives', n: '목숨', min: 1, max: 15, step: 1 },
+      { k: 'timeLimit', n: '곡 길이(초)', min: 30, max: 180, step: 5 },
+      { k: 'chords', n: '동시치기', type: 'bool' },
+    ],
+    derive(p) {
+      p.laneW = p.lanes >= 6 ? 92 : 110;
+      if (p.goodWindow <= p.perfectWindow) p.goodWindow = p.perfectWindow + 20; // GOOD이 더 좁으면 판정이 뒤집힌다
+    },
     est(p) {
       const notesPerSec = p.bpm / 60 * p.subdiv * p.density * 0.6;
       return Math.round(p.timeLimit * notesPerSec * p.perfectScore * 0.5 * 2.5); // 콤보 배수 감안
@@ -136,6 +175,22 @@ export const FAMILIES = {
         lives: rnd.range(3, 5),
         timeLimit: laps ? 0 : rnd.pick([60, 90]),
       };
+    },
+    knobs: [
+      { k: 'maxSpeed', n: '최고 속도', min: 4000, max: 16000, step: 250 },
+      { k: 'curviness', n: '코너 강도', min: 0.3, max: 6, step: 0.1 },
+      { k: 'hilliness', n: '언덕 강도', min: 0, max: 2, step: 0.05 },
+      { k: 'handling', n: '핸들링', min: 0.6, max: 4, step: 0.1 },
+      { k: 'centrifugal', n: '원심력', min: 0, max: 1.6, step: 0.05 },
+      { k: 'opponents', n: '상대 차', min: 0, max: 24, step: 1 },
+      { k: 'laps', n: '랩(0=시간제)', min: 0, max: 8, step: 1 },
+      { k: 'trackSegs', n: '트랙 길이', min: 300, max: 1200, step: 20 },
+      { k: 'lives', n: '목숨', min: 1, max: 9, step: 1 },
+      { k: 'timeLimit', n: '제한시간(0=랩전)', min: 0, max: 180, step: 5 },
+    ],
+    derive(p) {
+      p.offSpeed = Math.round(p.maxSpeed * 0.35);      // 코스 이탈 속도는 최고속에 따라간다
+      if (!p.laps && !p.timeLimit) p.timeLimit = 60;   // 둘 다 0이면 끝나지 않는다
     },
     est(p) {
       const T = p.timeLimit || 75;
@@ -179,6 +234,29 @@ export const FAMILIES = {
         lives: rnd.range(3, 5),
       };
     },
+    knobs: [
+      { k: 'runSpeed', n: '주행 속도', min: 200, max: 700, step: 10 },
+      { k: 'gravity', n: '중력', min: 900, max: 3200, step: 50 },
+      { k: 'jump', n: '점프력', min: 450, max: 1100, step: 10 },
+      { k: 'gapRate', n: '구멍 빈도', min: 0, max: 1, step: 0.05 },
+      { k: 'obsRate', n: '장애물 빈도', min: 0, max: 1, step: 0.05 },
+      { k: 'platMin', n: '발판 최소 길이', min: 150, max: 500, step: 10 },
+      { k: 'platMax', n: '발판 최대 길이', min: 300, max: 900, step: 10 },
+      { k: 'crashBack', n: '충돌 후퇴', min: 0, max: 300, step: 10 },
+      { k: 'lives', n: '목숨', min: 1, max: 9, step: 1 },
+      { k: 'ramp', n: '가속', min: 0, max: 0.12, step: 0.005 },
+      { k: 'doubleJump', n: '더블 점프', type: 'bool' },
+    ],
+    // 구멍 폭과 단차는 점프 성능에서 나온다. 손으로 속도를 바꾸면 여기서 다시 계산해야 못 넘는 맵이 안 나온다.
+    derive(p) {
+      const airTime = 2 * p.jump / p.gravity;
+      const reach = p.runSpeed * airTime;
+      const rise = p.jump * p.jump / (2 * p.gravity);
+      p.gapMin = Math.round(reach * 0.25);
+      p.gapMax = Math.round(reach * 0.6);
+      p.stepY = Math.round(Math.min(p.stepY ?? 100, rise * 0.7));
+      if (p.platMax < p.platMin + 60) p.platMax = p.platMin + 60;
+    },
     est(p) {
       const T = p.timeLimit || 45;
       return Math.round(T * p.runSpeed * p.scoreRate * 0.55);
@@ -219,6 +297,22 @@ export const FAMILIES = {
         lives: rnd.range(3, 5),
       };
     },
+    knobs: [
+      { k: 'tunnelSpeed', n: '전진 속도', min: 500, max: 2600, step: 25 },
+      { k: 'ringRate', n: '링 빈도(초당)', min: 0.2, max: 2.5, step: 0.05 },
+      { k: 'gapWidth', n: '틈 각도(rad)', min: 0.4, max: 2.6, step: 0.05 },
+      { k: 'rotSpeed', n: '회전 속도', min: 1.2, max: 6, step: 0.1 },
+      { k: 'roll', n: '관 흔들림', min: 0, max: 1.6, step: 0.05 },
+      { k: 'tunnelR', n: '관 반지름', min: 110, max: 270, step: 5 },
+      { k: 'focal', n: '초점 거리', min: 250, max: 800, step: 10 },
+      { k: 'zFar', n: '가시 거리', min: 2000, max: 7000, step: 100 },
+      { k: 'orbRate', n: '오브 빈도', min: 0, max: 2, step: 0.05 },
+      { k: 'ringScore', n: '링 통과 점수', min: 10, max: 300, step: 5 },
+      { k: 'lives', n: '목숨', min: 1, max: 9, step: 1 },
+      { k: 'ramp', n: '난이도 상승', min: 0, max: 0.12, step: 0.005 },
+      { k: 'shoot', n: '발사 가능', type: 'bool' },
+      { k: 'combo', n: '콤보 배수', type: 'bool' },
+    ],
     est(p) {
       const T = p.timeLimit || 45;
       return Math.round(T * (p.ringRate * p.ringScore * 0.6 + p.orbRate * p.orbScore * 0.3 + p.survivalScore));

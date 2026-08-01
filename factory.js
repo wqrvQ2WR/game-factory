@@ -117,7 +117,7 @@ async function makeGame({ seed = newSeed(), useAi = true, model = DEFAULT_MODEL,
 const dbPath = () => path.join(OUT, 'games.json');
 const readDb = () => (fs.existsSync(dbPath()) ? JSON.parse(fs.readFileSync(dbPath(), 'utf8')) : []);
 
-function updateGallery() {
+export function updateGallery() {
   const games = readDb();
   const byFam = {};
   for (const g of games) byFam[g.famKo] = (byFam[g.famKo] || 0) + 1;
@@ -146,6 +146,7 @@ h2{font-size:19px;margin:0}.sub{margin:2px 0 0;font-size:12px;color:var(--ac);le
 <div class="links">
 ${fs.existsSync(path.join(OUT, 'arcade.html')) ? '<a href="./arcade.html"><b>아케이드 ▶</b>매 스테이지 새 게임이 나오는 로그라이트 런</a>' : ''}
 ${fs.existsSync(path.join(OUT, 'showcase.html')) ? '<a href="./showcase.html"><b>무저갱 ▶</b>손으로 다듬은 단독 출시본</a>' : ''}
+${fs.existsSync(path.join(OUT, 'maker.html')) ? '<a href="./maker.html"><b>제작기 ▶</b>직접 굴려서 내 게임 만들기</a>' : ''}
 </div><div class="grid">${cards}</div>`);
 }
 
@@ -186,6 +187,23 @@ function buildShowcase() {
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(path.join(OUT, 'showcase.html'), buildHtml(cfg));
   return 'out/showcase.html';
+}
+
+// ---------- 제작기 (브라우저에서 직접 만들기) ----------
+// 공장 소스(rng·palette·naming·families)를 export만 떼고 그대로 넣는다.
+// 그래야 제작기가 공장과 완전히 같은 규칙으로 굴러간다 — 브라우저용으로 다시 짜면 두 벌이 어긋난다.
+const stripExports = (code) => code.replace(/^export\s+/gm, '');
+
+function buildMaker() {
+  const src = ['src/rng.js', 'src/palette.js', 'src/naming.js', 'src/families.js']
+    .map((f) => `// ===== ${f} =====\n` + stripExports(fs.readFileSync(path.join(ROOT, f), 'utf8')))
+    .join('\n\n');
+  const runtimes = JSON.stringify(Object.fromEntries(FAMILY_KEYS.map((f) => [f, bundle(f)])))
+    .replace(/<\//g, '<\\/');   // 문자열 안의 </script> 가 페이지를 끊지 않도록
+  const tpl = fs.readFileSync(path.join(ROOT, 'templates', 'maker.html'), 'utf8');
+  fs.mkdirSync(OUT, { recursive: true });
+  fs.writeFileSync(path.join(OUT, 'maker.html'), tpl.replace('__SRC__', src).replace('__RUNTIMES__', runtimes));
+  return 'out/maker.html';
 }
 
 // ---------- 아케이드 (메타게임) ----------
@@ -231,6 +249,7 @@ function selftest() {
   assert(before !== undefined, 'bpm 파라미터 사라짐');
 
   for (const fam of FAMILY_KEYS) simTest(fam);
+  makerTest();
   showcaseTest();
   determinismTest();
   console.log('셀프테스트 통과 ✓ (' + FAMILY_KEYS.join(', ') + ', 결정론)');
@@ -290,6 +309,18 @@ function simTest(family) {
   if (family === 'arena') assert(p.state === 'over' && +p.store['gf:sim:best'] > 0, 'arena: 사망→점수기록 경로가 끊김');
 }
 
+// 제작기는 공장 소스를 통째로 인라인한다 — export 떼고도 문법이 맞고 필요한 심볼이 다 있는지 본다.
+function makerTest() {
+  const out = buildMaker();
+  const html = fs.readFileSync(path.join(ROOT, 'out', 'maker.html'), 'utf8');
+  assert(!html.includes('__SRC__') && !html.includes('__RUNTIMES__'), '제작기: 템플릿 치환이 안 됨');
+  for (const sym of ['makeRng', 'makePalette', 'proceduralConcept', 'FAMILIES', 'FAMILY_KEYS', 'hashStr'])
+    assert(html.includes('function ' + sym) || html.includes('const ' + sym), `제작기: ${sym} 가 인라인되지 않음`);
+  assert(!/^export /m.test(html.split('const RUNTIMES')[0]), '제작기: export 구문이 남아 브라우저에서 터진다');
+  for (const f of FAMILY_KEYS) assert(html.includes(`"${f}":`), `제작기: ${f} 런타임 누락`);
+  assert(out === 'out/maker.html');
+}
+
 // 쇼케이스는 구간 상승·게이트 러시·아슬아슬 판정이 더 붙는다 — 그 경로도 실제로 돌려본다.
 function showcaseTest() {
   // 아무 키나 두드리는 봇으론 링 틈을 맞출 수 없다. 틈을 조준하는 봇으로 실제 난이도를 잰다.
@@ -336,6 +367,7 @@ const has = (f) => argv.includes(f);
 const val = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
 
 if (has('--selftest')) { selftest(); process.exit(0); }
+if (has('--maker')) { console.log('제작기: ' + buildMaker() + ' — 브라우저에서 직접 굴려 만들고 내려받기'); process.exit(0); }
 if (has('--showcase')) { console.log('쇼케이스: ' + buildShowcase() + ' — 무저갱 / ABYSS RUNNER (난이도 3종, 구간 진행, 게이트 러시)'); process.exit(0); }
 
 const forever = has('--forever');

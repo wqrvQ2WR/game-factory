@@ -1,0 +1,211 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>게임 공장 — 제작기</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#08090d;color:#e9e9f2;
+  font:14px/1.5 system-ui,-apple-system,sans-serif;overflow:hidden}
+#app{display:flex;height:100%}
+#side{width:380px;flex:none;overflow-y:auto;padding:18px;border-right:1px solid #ffffff14;background:#0b0c11}
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+#prev{flex:1;border:0;width:100%;background:#000}
+#bottom{flex:none;padding:12px 16px;border-top:1px solid #ffffff14;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+h1{font-size:17px;margin:0 0 2px}
+.hint{color:#7c7f93;font-size:12px;margin:0 0 18px}
+.sec{font-size:11px;letter-spacing:.12em;color:#7c8cff;margin:20px 0 8px;text-transform:uppercase}
+.fams{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.fams button{padding:9px 4px;border-radius:9px;border:1px solid #ffffff1a;background:#141620;color:#c9cbd8;
+  font:600 12px system-ui;cursor:pointer}
+.fams button.on{background:#7c8cff;color:#0b0c11;border-color:#7c8cff}
+label.row{display:block;margin:9px 0}
+label.row .lab{display:flex;justify-content:space-between;font-size:12px;color:#a8abbd;margin-bottom:3px}
+label.row .lab b{color:#e9e9f2;font-weight:600;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:#7c8cff}
+input[type=text],select{width:100%;padding:7px 9px;border-radius:8px;border:1px solid #ffffff1f;
+  background:#141620;color:#e9e9f2;font:13px system-ui}
+label.chk{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:13px;color:#c9cbd8;cursor:pointer}
+label.chk input{accent-color:#7c8cff;width:16px;height:16px}
+button.act{padding:9px 15px;border-radius:9px;border:1px solid #ffffff1f;background:#171922;color:#e9e9f2;
+  font:600 13px system-ui;cursor:pointer}
+button.act:hover{border-color:#7c8cff}
+button.act.pri{background:#7c8cff;color:#0b0c11;border-color:#7c8cff}
+#msg{color:#7c7f93;font-size:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+</style>
+
+<div id="app">
+  <div id="side">
+    <h1>게임 공장 — 제작기</h1>
+    <p class="hint">직접 굴려서 내 게임 만들기. 바꾸는 즉시 오른쪽에서 돌아간다.</p>
+
+    <div class="sec">장르</div>
+    <div class="fams" id="fams"></div>
+
+    <div class="sec">컨셉</div>
+    <label class="row"><span class="lab">제목</span><input type="text" id="title"></label>
+    <label class="row"><span class="lab">영문 부제</span><input type="text" id="subtitle"></label>
+    <label class="row"><span class="lab">한 줄 카피</span><input type="text" id="tagline"></label>
+
+    <div class="sec">색</div>
+    <label class="row"><span class="lab">색상 <b id="hueV"></b></span><input type="range" id="hue" min="0" max="359" step="1"></label>
+    <label class="row"><span class="lab">배색 규칙</span><select id="scheme"></select></label>
+    <label class="chk"><input type="checkbox" id="dark"> 어두운 배경</label>
+
+    <div class="sec">규칙</div>
+    <div id="knobs"></div>
+  </div>
+
+  <div id="main">
+    <iframe id="prev" allow="autoplay"></iframe>
+    <div id="bottom">
+      <button class="act pri" onclick="roll()">🎲 랜덤 굴리기</button>
+      <button class="act" onclick="apply()">↻ 미리보기 다시</button>
+      <button class="act" onclick="download()">⬇ 내려받기</button>
+      <button class="act" onclick="share()">🔗 공유 링크 복사</button>
+      <span id="msg"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 공장 소스 그대로 (export만 떼서 인라인) ──
+__SRC__
+</script>
+<script>
+const RUNTIMES = __RUNTIMES__;
+const SCHEMES = ['analogous', 'complementary', 'triad', 'splitComp', 'monochrome'];
+const $ = (id) => document.getElementById(id);
+
+let S = null; // 현재 상태
+
+function freshState(family, seed) {
+  const rnd = makeRng(seed);
+  const params = FAMILIES[family].params(rnd);
+  const c = proceduralConcept(rnd, family, []);
+  return {
+    family, seed, params,
+    title: c.title, subtitle: c.subtitle, tagline: c.tagline,
+    hue: ((c.hue % 360) + 360) % 360, scheme: 'splitComp', dark: true,
+  };
+}
+
+function buildCfg() {
+  const params = { ...S.params };
+  FAMILIES[S.family].derive?.(params);   // 파생값 재계산 (구멍 폭, 판정폭 등)
+  return {
+    id: String(hashStr(S.seed)), seed: S.seed, family: S.family,
+    title: S.title || '무제', subtitle: S.subtitle || '', tagline: S.tagline || '',
+    howto: FAMILIES[S.family].howto(params),
+    palette: makePalette(makeRng(S.seed + ':pal'), { hue: S.hue, scheme: S.scheme, dark: S.dark }),
+    params,
+  };
+}
+
+function buildHtml(cfg) {
+  return `<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>${cfg.title} — ${cfg.subtitle}</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:${cfg.palette.bg2};touch-action:none}
+canvas{display:block;cursor:crosshair}
+</style>
+<canvas id="c"></canvas>
+<script>const CFG=${JSON.stringify(cfg)};<\/script>
+<script>${RUNTIMES[cfg.family]}<\/script>`;
+}
+
+// ── UI 그리기 ──
+function drawFams() {
+  $('fams').innerHTML = FAMILY_KEYS.map((f) =>
+    `<button class="${f === S.family ? 'on' : ''}" onclick="setFamily('${f}')">${FAMILIES[f].ko}</button>`).join('');
+}
+
+function drawKnobs() {
+  const ks = FAMILIES[S.family].knobs;
+  $('knobs').innerHTML = ks.map((kn) => {
+    const v = S.params[kn.k];
+    if (kn.type === 'bool')
+      return `<label class="chk"><input type="checkbox" data-k="${kn.k}" data-t="bool" ${v ? 'checked' : ''}> ${kn.n}</label>`;
+    if (kn.type === 'sel')
+      return `<label class="row"><span class="lab">${kn.n}</span>
+        <select data-k="${kn.k}" data-t="sel">${kn.opts.map((o) => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select></label>`;
+    return `<label class="row"><span class="lab">${kn.n} <b id="v_${kn.k}">${fmt(v)}</b></span>
+      <input type="range" data-k="${kn.k}" data-t="num" min="${kn.min}" max="${kn.max}" step="${kn.step}" value="${v}"></label>`;
+  }).join('');
+
+  $('knobs').querySelectorAll('[data-k]').forEach((el) => {
+    el.oninput = () => {
+      const k = el.dataset.k;
+      if (el.dataset.t === 'bool') S.params[k] = el.checked;
+      else if (el.dataset.t === 'sel') S.params[k] = el.value;
+      else { S.params[k] = +el.value; const o = $('v_' + k); if (o) o.textContent = fmt(+el.value); }
+      queue();
+    };
+  });
+}
+const fmt = (v) => (typeof v === 'number' && !Number.isInteger(v) ? v.toFixed(3).replace(/0+$/, '').replace(/\.$/, '') : v);
+
+function drawConcept() {
+  $('title').value = S.title; $('subtitle').value = S.subtitle; $('tagline').value = S.tagline;
+  $('hue').value = S.hue; $('hueV').textContent = S.hue;
+  $('scheme').innerHTML = SCHEMES.map((s) => `<option ${s === S.scheme ? 'selected' : ''}>${s}</option>`).join('');
+  $('dark').checked = S.dark;
+}
+
+function drawAll() { drawFams(); drawConcept(); drawKnobs(); apply(); }
+
+// ── 동작 ──
+function setFamily(f) { S = freshState(f, S.seed); drawAll(); }
+function roll() { S = freshState(S.family, newSeedStr()); drawAll(); }
+const newSeedStr = () => Math.random().toString(36).slice(2, 9);
+
+let timer = null;
+function queue() { clearTimeout(timer); timer = setTimeout(apply, 180); }
+function apply() {
+  const cfg = buildCfg();
+  $('prev').srcdoc = buildHtml(cfg);
+  location.hash = encodeState();
+  setTimeout(() => { try { $('prev').contentWindow.focus(); } catch {} }, 80);
+}
+
+function download() {
+  const cfg = buildCfg();
+  const blob = new Blob([buildHtml(cfg)], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (cfg.title || 'game').replace(/[^\p{L}\p{N}]+/gu, '-') + '.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  msg('내려받았습니다 — 그 파일 하나만 있으면 어디서든 돌아갑니다');
+}
+
+function share() {
+  const url = location.origin + location.pathname + '#' + encodeState();
+  navigator.clipboard?.writeText(url).then(() => msg('링크 복사됨 — 이 주소를 열면 이 설정 그대로 나옵니다'),
+    () => msg('복사 실패. 주소창의 URL을 그대로 쓰세요'));
+}
+
+let msgT;
+function msg(s) { $('msg').textContent = s; clearTimeout(msgT); msgT = setTimeout(() => ($('msg').textContent = ''), 4000); }
+
+const encodeState = () => btoa(encodeURIComponent(JSON.stringify(S)));
+function decodeState(h) {
+  try {
+    const o = JSON.parse(decodeURIComponent(atob(h)));
+    if (o && FAMILIES[o.family] && o.params) return o;
+  } catch {}
+  return null;
+}
+
+// ── 컨셉/색 입력 ──
+for (const id of ['title', 'subtitle', 'tagline']) $(id).oninput = () => { S[id] = $(id).value; queue(); };
+$('hue').oninput = () => { S.hue = +$('hue').value; $('hueV').textContent = S.hue; queue(); };
+$('scheme').onchange = () => { S.scheme = $('scheme').value; queue(); };
+$('dark').onchange = () => { S.dark = $('dark').checked; queue(); };
+
+S = decodeState(location.hash.slice(1)) || freshState('tunnel3d', newSeedStr());
+drawAll();
+</script>

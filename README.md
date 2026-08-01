@@ -14,6 +14,7 @@ node factory.js 10 --family racing   # 장르 고정 (arena|rhythm|racing|parkou
 node factory.js 5 --mp               # 온라인 1:1 대전 게임으로 생성
 node factory.js 12 --arcade          # 아케이드(메타게임) 한 벌 + out/arcade.html
 node factory.js --showcase           # 손으로 다듬은 단독 출시본 out/showcase.html
+node factory.js --maker              # 직접 만드는 제작기 out/maker.html
 node factory.js 1 --open     # 만들고 바로 열기
 node factory.js --selftest   # 자체 점검
 ```
@@ -26,6 +27,7 @@ node factory.js --selftest   # 자체 점검
 - `out/index.html` — 지금까지 만든 전부를 보여주는 갤러리
 - `out/arcade.html` — 아케이드: 뽑힌 게임들을 스테이지로 엮은 로그라이트 런
 - `out/showcase.html` — 무저갱: 공장 결과물 하나를 손으로 다듬은 단독 출시본
+- `out/maker.html` — 제작기: 브라우저에서 직접 굴려 만들고 내려받기
 - `out/games.json` — 생산 대장
 
 ## 구조
@@ -79,6 +81,26 @@ node factory.js 12 --arcade   # 게임 12개 + out/arcade.html
 - 목표 점수는 각 계열이 자기 채점식으로 추정한다 (`FAMILIES[x].est`)
 - 메타게임은 게임을 iframe으로 띄우고 결과를 `postMessage` 로 받는다
 - 강화는 **쿼리로만** 전달한다 (`?lives=2&time=30&targetMul=0.9`) — 게임 파일 자체는 손대지 않는다
+
+## 제작기 — 직접 만들기
+
+```bash
+node factory.js --maker
+```
+
+공장이 굴리던 주사위를 사람이 굴린다. 왼쪽에서 값을 바꾸면 오른쪽에서 즉시 그 게임이 돌아간다.
+
+- 장르 5계열 · 제목/부제/카피 · 색상(색·배색 규칙·명암) · 계열별 규칙 노브 10~18개
+- **🎲 랜덤 굴리기** 로 공장과 똑같은 방식의 새 판을 뽑아 거기서부터 손보기
+- **⬇ 내려받기** — 의존성 없는 단일 .html 하나. 그 파일만 있으면 어디서든 돌아간다
+- **🔗 공유 링크** — 설정이 통째로 URL 해시에 들어간다. 열면 그 상태 그대로 복원
+
+제작기는 `src/rng.js` · `palette.js` · `naming.js` · `families.js` 를 **export만 떼고 그대로 인라인**한다.
+브라우저용으로 다시 짜면 두 벌이 어긋나므로, 공장과 문자 그대로 같은 규칙으로 굴러가게 했다.
+
+손으로 만지면 깨지는 값은 계열의 `derive(p)` 가 다시 계산한다 —
+파쿠르는 주행속도·점프·중력에서 **구멍 폭과 단차**를, 레이싱은 최고속에서 **이탈 속도**를,
+리듬은 PERFECT보다 좁아진 **GOOD 판정폭**을, 아레나는 **중력+화면순환**(바닥이 사라진다)을 바로잡는다.
 
 ## 무저갱 — 단독 출시본
 
