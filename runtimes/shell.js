@@ -20,20 +20,62 @@ let mx = W / 2, my = H / 2, down = false;
 onkeydown = e => {
   keys.add(e.code);
   if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+  // 난이도 고르기가 시작보다 먼저다. code가 안 오는 입력도 있어서 key도 같이 본다.
+  if (SHOW && state !== 'play') {
+    const n = /^Digit([123])$/.exec(e.code)?.[1] || (e.key >= '1' && e.key <= '3' ? e.key : null);
+    if (n) { pickDiff(+n - 1); return; }
+  }
   if (state !== 'play') start();
 };
 onkeyup = e => keys.delete(e.code);
 const toWorld = e => { mx = (e.clientX - ox) / scale; my = (e.clientY - oy) / scale; };
 cvs.onpointermove = toWorld;
-cvs.onpointerdown = e => { toWorld(e); down = true; if (state !== 'play') start(); };
+cvs.onpointerdown = e => {
+  toWorld(e); down = true;
+  if (SHOW && state !== 'play') {                 // 난이도 버튼을 눌렀으면 시작이 아니라 선택
+    for (let i = 0; i < 3; i++) {
+      const bx = W / 2 + (i - 1) * 130;
+      if (mx > bx - 56 && mx < bx + 56 && my > H / 2 + 118 && my < H / 2 + 152) { pickDiff(i); return; }
+    }
+  }
+  if (state !== 'play') start();
+};
 onpointerup = () => down = false;
 const k = (...c) => c.some(x => keys.has(x));
 const tapped = (...c) => c.some(x => keys.has(x) && !prevKeys.has(x)); // 이번 프레임에 새로 눌림
 
+// ---- 쇼케이스(단독 출시본) 전용: 난이도 선택 ----
+const SHOW = CFG.showcase ? { idx: 1, names: ['쉬움', '보통', '어려움'], mul: [0.82, 1, 1.3] } : null;
+const diffMul = () => (SHOW ? SHOW.mul[SHOW.idx] : 1);
+function pickDiff(i) {
+  SHOW.idx = i;
+  best = +localStorage.getItem(bestKey()) || 0;
+  sfx(520 + i * 120, .09, 'triangle', .12);
+}
+
 // ---- 상태 ----
-const BEST_KEY = 'gf:' + CFG.id + ':best';
-let state = 'title', score = 0, best = +localStorage.getItem(BEST_KEY) || 0;
+const bestKey = () => 'gf:' + CFG.id + ':best' + (SHOW ? ':' + SHOW.idx : '');
+let state = 'title', score = 0, best = +localStorage.getItem(bestKey()) || 0;
 let lives = 0, t = 0, combo = 1, shake = 0, flash = 0, parts = [], toasts = [], endMsg = '';
+
+// ---- 아케이드 모드 (CFG.arcade) ----
+// 메타게임 arcade.html 이 이 게임을 iframe으로 띄우고, 결과를 postMessage로 받아 런을 굴린다.
+// 강화 효과는 부모가 쿼리로 넘긴다 — 게임 파일 자체는 그대로 두고 밖에서만 조정한다.
+const ARC = CFG.arcade ? (() => {
+  const q = new URLSearchParams(location.search);
+  const num = (k, d) => (isFinite(+q.get(k)) && q.get(k) !== null ? +q.get(k) : d);
+  const a = {
+    stage: num('stage', 1),
+    target: Math.max(1, Math.round(CFG.arcade.target * num('targetMul', 1))),
+    bonusLives: num('lives', 0),
+    bonusTime: num('time', 0),
+    sent: false,
+    send(type, extra) { try { parent.postMessage({ gf: type, ...extra }, '*'); } catch {} },
+  };
+  P.timeLimit = (P.timeLimit || 45) + a.bonusTime;
+  P.timeUpMsg = '종료';
+  return a;
+})() : null;
 
 // ---- 온라인 대전 (CFG.mp 있을 때만) ----
 // 서버는 점수만 중계한다. 물리 동기화·롤백 없음 — 양쪽이 같은 방 시드로 같은 맵을 돌고 점수로 겨룬다.
@@ -88,17 +130,24 @@ const MP = CFG.mp ? {
 
 function start() {
   if (MP && !MP.canStart()) return;
+  if (ARC && ARC.sent) return; // 아케이드 한 스테이지는 한 판. 재시작은 부모가 결정한다
   state = 'play'; score = 0; t = 0; combo = 1; shake = 0; flash = 0;
-  parts = []; toasts = []; endMsg = ''; lives = P.lives;
+  parts = []; toasts = []; endMsg = ''; lives = P.lives + (ARC ? ARC.bonusLives : 0);
   seedRand(MP ? MP.seed : +CFG.id); // 멀티는 방 시드로 — 양쪽 맵이 같아야 한다
   GAME.reset();
   if (AC && AC.state === 'suspended') AC.resume();
 }
 function over(msg) {
   state = 'over'; endMsg = msg || 'GAME OVER';
-  if (score > best) { best = Math.round(score); localStorage.setItem(BEST_KEY, best); }
+  if (score > best) { best = Math.round(score); localStorage.setItem(bestKey(), best); }
   sfx(90, .7, 'sine', .25);
   if (MP) MP.finish();
+  if (ARC && !ARC.sent) {
+    ARC.sent = true;
+    const cleared = Math.round(score) >= ARC.target;
+    endMsg = cleared ? '통과!' : '목표 미달';
+    ARC.send('over', { score: Math.round(score), target: ARC.target, cleared, title: CFG.title, stage: ARC.stage });
+  }
 }
 function hit() {
   lives--; combo = 1; shake = 18; flash = 1;
@@ -179,6 +228,16 @@ function drawFx() {
   ctx.font = 'bold 17px system-ui,sans-serif'; ctx.textAlign = 'center';
   for (const s of toasts) { ctx.globalAlpha = s.life; ctx.fillStyle = s.c; ctx.fillText(s.txt, s.x, s.y); }
   ctx.globalAlpha = 1;
+
+  const b = GAME.banner && GAME.banner();
+  if (b && b.life > 0) {
+    ctx.globalAlpha = Math.min(1, b.life * 1.4);
+    ctx.fillStyle = C.accent; ctx.font = 'bold 13px system-ui,sans-serif';
+    ctx.fillText(b.kicker, W / 2, H * .3 - 26);
+    ctx.fillStyle = C.text; ctx.font = 'bold 40px system-ui,sans-serif';
+    ctx.fillText(b.text, W / 2, H * .3 + 14);
+    ctx.globalAlpha = 1;
+  }
 }
 
 function drawHud() {
@@ -191,6 +250,14 @@ function drawHud() {
   let y = 58;
   ctx.font = '14px system-ui,sans-serif'; ctx.fillStyle = C.dim;
   if (P.timeLimit) { ctx.fillText(Math.max(0, P.timeLimit - t).toFixed(1) + 's', W - 20, y); y += 20; }
+  if (ARC) {
+    const p = Math.min(1, score / ARC.target);
+    ctx.fillStyle = p >= 1 ? C.pickup : C.dim;
+    ctx.fillText(`목표 ${ARC.target.toLocaleString()}`, W - 20, y); y += 10;
+    ctx.fillStyle = C.grid; ctx.fillRect(W - 160, y, 140, 6);
+    ctx.fillStyle = p >= 1 ? C.pickup : C.accent; ctx.fillRect(W - 160, y, 140 * p, 6);
+    y += 24; ctx.fillStyle = C.dim;
+  }
   if (MP) {
     const os = MP.opp ? MP.opp.score : 0, d = Math.round(score) - os;
     ctx.fillStyle = d >= 0 ? C.pickup : C.danger;
@@ -213,8 +280,28 @@ function drawScreens() {
     ctx.fillText(CFG.tagline, W / 2, H / 2 + 22);
     ctx.fillStyle = C.text; ctx.font = '14px system-ui,sans-serif';
     ctx.fillText(CFG.howto, W / 2, H / 2 + 70);
+    if (SHOW) {
+      ctx.font = '13px system-ui,sans-serif'; ctx.fillStyle = C.dim;
+      ctx.fillText('난이도 — 1 / 2 / 3 키로 선택', W / 2, H / 2 + 104);
+      SHOW.names.forEach((n, i) => {
+        const x = W / 2 + (i - 1) * 130, on = i === SHOW.idx;
+        ctx.fillStyle = on ? C.player : C.grid;
+        ctx.fillRect(x - 56, H / 2 + 118, 112, 34);
+        ctx.fillStyle = on ? C.bg : C.dim;
+        ctx.font = 'bold 15px system-ui,sans-serif';
+        ctx.fillText(`${i + 1}. ${n}`, x, H / 2 + 140);
+      });
+      ctx.fillStyle = C.dim; ctx.font = '13px system-ui,sans-serif';
+      ctx.fillText(`이 난이도 최고 기록 ${best.toLocaleString()}`, W / 2, H / 2 + 178);
+      ctx.fillStyle = C.player; ctx.font = 'bold 16px system-ui,sans-serif';
+      ctx.fillText('다른 키를 누르면 시작', W / 2, H / 2 + 208);
+      return;
+    }
     ctx.fillStyle = C.player; ctx.font = 'bold 17px system-ui,sans-serif';
-    ctx.fillText(MP ? MP.status() : '아무 키나 누르면 시작', W / 2, H / 2 + 112);
+    ctx.fillText(
+      ARC ? `STAGE ${ARC.stage} · 목표 ${ARC.target.toLocaleString()}점 · ${ARC.wait > 0 ? ARC.wait.toFixed(1) + '초 후 시작' : '시작'}`
+        : MP ? MP.status() : '아무 키나 누르면 시작',
+      W / 2, H / 2 + 112);
     if (MP && MP.joined && MP.players < 2) {
       ctx.fillStyle = C.dim; ctx.font = '13px system-ui,sans-serif';
       ctx.fillText('이 주소를 상대에게 보내세요', W / 2, H / 2 + 142);
@@ -235,6 +322,8 @@ function drawScreens() {
       ctx.fillText(r, W / 2, H / 2 + 54);
       ctx.fillStyle = C.dim; ctx.font = '14px system-ui,sans-serif';
       ctx.fillText(`나 ${Math.round(score).toLocaleString()} · 상대 ${MP.opp ? MP.opp.score.toLocaleString() : '-'} · 새로고침하면 재대결`, W / 2, H / 2 + 84);
+    } else if (ARC) {
+      ctx.fillText(`목표 ${ARC.target.toLocaleString()} · ${Math.round(score) >= ARC.target ? '다음 스테이지로' : '런 종료'}`, W / 2, H / 2 + 50);
     } else {
       ctx.fillText('BEST ' + best.toLocaleString() + ' · 아무 키나 눌러 재시작', W / 2, H / 2 + 50);
     }
@@ -246,10 +335,13 @@ const STEP = 1 / 60; // 고정 타임스텝: 이게 없으면 프레임레이트
 function boot() {
   GAME.reset(); // 타이틀 화면도 draw()를 타므로 상태를 미리 채워둔다
   if (MP) MP.join();
+  if (ARC) ARC.send('ready', { title: CFG.title, subtitle: CFG.subtitle, howto: CFG.howto, target: ARC.target, family: CFG.family, stage: ARC.stage });
   let last = performance.now(), acc = 0;
+  const bootAt = last;
   (function frame(now) {
     acc += Math.min(.25, (now - last) / 1000); last = now;
     if (MP) MP.tick();
+    if (ARC) { ARC.wait = Math.max(0, (bootAt + 2600 - now) / 1000); if (state === 'title' && ARC.wait <= 0) start(); }
     while (acc >= STEP) {
       acc -= STEP;
       if (state === 'play') { t += STEP; GAME.update(STEP); stepFx(STEP); }

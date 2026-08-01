@@ -52,6 +52,11 @@ export const FAMILIES = {
       if (p.shoot) a.push('발사: Space / 클릭');
       return a.join('   ·   ');
     },
+    // 아케이드 목표 점수 추정: 그 게임의 채점식으로 '괜찮게 플레이했을 때' 정도
+    est(p) {
+      const T = p.timeLimit || 45;
+      return Math.round(T * (p.pickupScore * p.pickupRate * 0.55 + p.killScore * p.enemyRate * 0.35 + p.survivalScore));
+    },
     mech(p) {
       const M = { chase: '추격형 적', drift: '직선으로 튕겨다니는 적', rain: '위에서 쏟아지는 적', orbit: '중앙을 도는 회전 장애물' };
       const s = [M[p.enemyMode]];
@@ -95,6 +100,10 @@ export const FAMILIES = {
       const L = ['S', 'D', 'F', 'J', 'K', 'L'].slice(0, p.lanes).join(' ');
       return `노트가 판정선에 닿을 때 해당 레인 키: ${L}`;
     },
+    est(p) {
+      const notesPerSec = p.bpm / 60 * p.subdiv * p.density * 0.6;
+      return Math.round(p.timeLimit * notesPerSec * p.perfectScore * 0.5 * 2.5); // 콤보 배수 감안
+    },
     mech(p) {
       const s = [`${p.lanes}레인`, `${p.bpm} BPM`, `${p.timeLimit}초 곡`];
       if (p.subdiv > 1) s.push(`${p.subdiv}분할 채보`);
@@ -127,6 +136,10 @@ export const FAMILIES = {
         lives: rnd.range(3, 5),
         timeLimit: laps ? 0 : rnd.pick([60, 90]),
       };
+    },
+    est(p) {
+      const T = p.timeLimit || 75;
+      return Math.round(T * p.maxSpeed * p.scoreRate * 0.6 + p.passScore * p.opponents * 0.4);
     },
     howto() { return '조향: A / D   ·   가속: W (또는 클릭)   ·   브레이크: S'; },
     mech(p) {
@@ -166,6 +179,10 @@ export const FAMILIES = {
         lives: rnd.range(3, 5),
       };
     },
+    est(p) {
+      const T = p.timeLimit || 45;
+      return Math.round(T * p.runSpeed * p.scoreRate * 0.55);
+    },
     howto(p) {
       const a = ['점프: Space / W' + (p.doubleJump ? ' (더블 점프)' : ''), '슬라이드: S'];
       return a.join('   ·   ') + '   ·   전진은 자동';
@@ -201,6 +218,10 @@ export const FAMILIES = {
         survivalScore: rnd.range(2, 8),
         lives: rnd.range(3, 5),
       };
+    },
+    est(p) {
+      const T = p.timeLimit || 45;
+      return Math.round(T * (p.ringRate * p.ringScore * 0.6 + p.orbRate * p.orbScore * 0.3 + p.survivalScore));
     },
     howto(p) {
       return '회전: A / D (또는 마우스)' + (p.shoot ? '   ·   발사: Space' : '');

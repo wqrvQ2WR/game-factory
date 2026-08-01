@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // 게임 공장. 절차적 파라미터로 뼈대를 찍고, omniroute LLM이 컨셉/밸런스를 씌운다.
-// 사용:  node factory.js [개수|--forever] [--no-ai] [--family arena] [--seed xxx] [--model auto/fast] [--mp [url]] [--open]
+// 사용:  node factory.js [개수|--forever] [--no-ai] [--family arena] [--seed xxx]
+//        [--model auto/fast] [--mp [url]] [--arcade] [--open]
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -79,7 +80,7 @@ canvas{display:block;cursor:crosshair}
 <script>${bundle(cfg.family)}</script>
 `;
 
-async function makeGame({ seed = newSeed(), useAi = true, model = DEFAULT_MODEL, family, mp = null } = {}) {
+async function makeGame({ seed = newSeed(), useAi = true, model = DEFAULT_MODEL, family, mp = null, arcade = false } = {}) {
   const rnd = makeRng(seed);
   const fam = family || rnd.pick(FAMILY_KEYS);
   const F = FAMILIES[fam];
@@ -104,11 +105,12 @@ async function makeGame({ seed = newSeed(), useAi = true, model = DEFAULT_MODEL,
     howto: F.howto(params), palette, params,
   };
   if (mp) cfg.mp = { url: mp };
+  if (arcade) cfg.arcade = { target: Math.max(50, F.est(params)) };
   const file = `${slug(concept.title)}-${cfg.id.slice(0, 6)}.html`;
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(path.join(OUT, file), buildHtml(cfg));
   const mech = F.mech(params).concat(mp ? [`온라인 1:1 (같은 시드·같은 맵, ${params.timeLimit}초 점수 대결)`] : []).join(', ');
-  return { file, cfg, source: concept.source, error: concept.error, mech, famKo: F.ko };
+  return { file, cfg, source: concept.source, error: concept.error, mech, famKo: F.ko, target: cfg.arcade?.target };
 }
 
 // ---------- 갤러리 ----------
@@ -136,7 +138,15 @@ h1{font-size:22px;margin:0 0 4px}.count{color:#7c7f93;margin:0 0 28px}
 .fam{font-size:11px;opacity:.6;border:1px solid currentColor;border-radius:99px;padding:1px 8px}
 h2{font-size:19px;margin:0}.sub{margin:2px 0 0;font-size:12px;color:var(--ac);letter-spacing:.04em}
 .tag{margin:8px 0 0;font-size:13px;opacity:.8}.mech{margin:8px 0 0;font-size:11px;opacity:.5;line-height:1.4}
-</style><h1>게임 공장</h1><p class="count">${games.length}개 생산됨 · ${Object.entries(byFam).map(([f, n]) => `${f} ${n}`).join(' · ')}</p><div class="grid">${cards}</div>`);
+.links{display:flex;gap:10px;margin:0 0 24px}
+.links a{display:block;padding:10px 16px;border-radius:11px;background:#171922;border:1px solid #ffffff1a;color:#e8e8ef;text-decoration:none;font-size:13px}
+.links a b{display:block;font-size:15px;margin-bottom:2px}
+.links a:hover{border-color:#7c8cff}
+</style><h1>게임 공장</h1><p class="count">${games.length}개 생산됨 · ${Object.entries(byFam).map(([f, n]) => `${f} ${n}`).join(' · ')}</p>
+<div class="links">
+${fs.existsSync(path.join(OUT, 'arcade.html')) ? '<a href="./arcade.html"><b>아케이드 ▶</b>매 스테이지 새 게임이 나오는 로그라이트 런</a>' : ''}
+${fs.existsSync(path.join(OUT, 'showcase.html')) ? '<a href="./showcase.html"><b>무저갱 ▶</b>손으로 다듬은 단독 출시본</a>' : ''}
+</div><div class="grid">${cards}</div>`);
 }
 
 function record(g) {
@@ -150,6 +160,40 @@ function record(g) {
   });
   fs.writeFileSync(dbPath(), JSON.stringify(games, null, 1));
   updateGallery();
+}
+
+// ---------- 쇼케이스: 뽑힌 것 중 하나를 손으로 다듬은 단독 출시본 ----------
+// 랜덤이 아니라 고정 수치다. 공장 결과물이 어디까지 갈 수 있는지 보여주는 기준선.
+export const SHOWCASE_PARAMS = {
+  tunnelSpeed: 1150, focal: 520, zFar: 4200, tunnelR: 200,
+  rotSpeed: 3.4, gapWidth: 1.45, ringRate: 0.75, roll: 0.45,
+  shoot: true, shotSpeed: 3200, orbRate: 0.55,
+  ringScore: 100, orbScore: 60, survivalScore: 4,
+  lives: 3, timeLimit: 0, ramp: 0.012, combo: true,
+  sfxVol: 0.85, sfxBend: 1.4,
+  phaseTime: 22, rushTime: 10,   // 22초마다 구간 상승, 3구간마다 10초 게이트 러시
+};
+
+function buildShowcase() {
+  const params = { ...SHOWCASE_PARAMS };
+  const cfg = {
+    id: '77777', seed: 'showcase', family: 'tunnel3d', showcase: true,
+    title: '무저갱', subtitle: 'ABYSS RUNNER', tagline: '틈은 늘 마지막 순간에 열린다',
+    howto: FAMILIES.tunnel3d.howto(params),
+    palette: makePalette(makeRng('showcase-abyss'), { hue: 268, scheme: 'splitComp', dark: true }),
+    params,
+  };
+  fs.mkdirSync(OUT, { recursive: true });
+  fs.writeFileSync(path.join(OUT, 'showcase.html'), buildHtml(cfg));
+  return 'out/showcase.html';
+}
+
+// ---------- 아케이드 (메타게임) ----------
+function writeArcade(games) {
+  const tpl = fs.readFileSync(path.join(ROOT, 'templates', 'arcade.html'), 'utf8');
+  const list = games.map((g) => ({ file: g.file, title: g.cfg.title, famKo: g.famKo, target: g.target }));
+  fs.writeFileSync(path.join(OUT, 'arcade.html'), tpl.replace('__GAMES__', JSON.stringify(list, null, 1)));
+  return list.length;
 }
 
 // ---------- 자체 점검 ----------
@@ -187,12 +231,13 @@ function selftest() {
   assert(before !== undefined, 'bpm 파라미터 사라짐');
 
   for (const fam of FAMILY_KEYS) simTest(fam);
+  showcaseTest();
   determinismTest();
   console.log('셀프테스트 통과 ✓ (' + FAMILY_KEYS.join(', ') + ', 결정론)');
 }
 
 // 가짜 캔버스 위에서 런타임을 실제로 돌린다.
-function runSim(family, params, { frames = 60 * 60, script, id = 'sim' } = {}) {
+function runSim(family, params, { frames = 60 * 60, script, id = 'sim', showcase = false, extra = '' } = {}) {
   const noop = () => {};
   const ctx = new Proxy({}, {
     get: (t, k) => (k === 'createRadialGradient' ? () => ({ addColorStop: noop }) : k in t ? t[k] : noop),
@@ -202,12 +247,12 @@ function runSim(family, params, { frames = 60 * 60, script, id = 'sim' } = {}) {
   const store = {};
   const localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => (store[k] = String(v)) };
   let now = 0, pending = null;
-  const cfg = { id, family, title: 't', subtitle: 's', tagline: 'x', howto: 'x', palette: makePalette(makeRng(id), {}), params };
+  const cfg = { id, family, title: 't', subtitle: 's', tagline: 'x', howto: 'x', palette: makePalette(makeRng(id), {}), params, showcase };
 
   const g = globalThis;
   new Function('CFG', 'document', 'addEventListener', 'devicePixelRatio', 'innerWidth', 'innerHeight',
     'performance', 'requestAnimationFrame', 'localStorage', 'AudioContext', 'webkitAudioContext',
-    bundle(family) + '\nglobalThis.__probe = () => ({ state, score, t, lives });')(
+    bundle(family) + `\nglobalThis.__probe = () => ({ state, score, t, lives${extra ? ', ' + extra : ''} });`)(
     cfg, { getElementById: () => cvs }, noop, 1, 960, 600,
     { now: () => now }, (cb) => (pending = cb), localStorage, undefined, undefined
   );
@@ -245,6 +290,26 @@ function simTest(family) {
   if (family === 'arena') assert(p.state === 'over' && +p.store['gf:sim:best'] > 0, 'arena: 사망→점수기록 경로가 끊김');
 }
 
+// 쇼케이스는 구간 상승·게이트 러시·아슬아슬 판정이 더 붙는다 — 그 경로도 실제로 돌려본다.
+function showcaseTest() {
+  // 아무 키나 두드리는 봇으론 링 틈을 맞출 수 없다. 틈을 조준하는 봇으로 실제 난이도를 잰다.
+  const aimGap = (i, g, noop) => {
+    const p = g.__probe();
+    g.onkeyup({ code: 'KeyA' }); g.onkeyup({ code: 'KeyD' });
+    if (!p.rings) return;
+    let near = null, bz = 1e9;
+    for (const r of p.rings) if (!r.done && r.z < bz) { bz = r.z; near = r; }
+    if (!near) return;
+    let d = near.gap - p.ang;
+    while (d > Math.PI) d -= 6.283;
+    while (d < -Math.PI) d += 6.283;
+    if (Math.abs(d) > 0.06) g.onkeydown({ code: d > 0 ? 'KeyD' : 'KeyA', preventDefault: noop });
+  };
+  const p = runSim('tunnel3d', { ...SHOWCASE_PARAMS }, { script: aimGap, frames: 60 * 130, id: '77777', showcase: true, extra: 'ang, rings' });
+  assert(p.t > 70, `쇼케이스: 조준하는 봇도 70초를 못 버팀 (t=${p.t.toFixed(1)}) — 구간 상승이 너무 가파르다`);
+  assert(p.score > 3000, `쇼케이스: 70초 넘게 버텼는데 점수가 ${Math.round(p.score)} — 채점이 안 붙는다`);
+}
+
 // 온라인 대전이 공정하려면: 같은 시드 + 같은 입력 = 완전히 같은 결과.
 // 시드 난수(rand)와 고정 타임스텝이 깨지면 여기서 걸린다.
 function determinismTest() {
@@ -260,17 +325,21 @@ function determinismTest() {
 }
 
 // ---------- CLI ----------
-if (process.argv[1] && fs.realpathSync(process.argv[1]) !== fileURLToPath(import.meta.url)) {
-  // 모듈로 로드됨 — CLI 건너뜀
-} else {
+// 직접 실행할 때만 CLI가 돈다. import 하면(테스트·스윕·node -e) 아무것도 만들지 않는다.
+const RAN_DIRECTLY = (() => {
+  try { return !!process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
+  catch { return false; }
+})();
+if (RAN_DIRECTLY) {
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
 const val = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
 
 if (has('--selftest')) { selftest(); process.exit(0); }
+if (has('--showcase')) { console.log('쇼케이스: ' + buildShowcase() + ' — 무저갱 / ABYSS RUNNER (난이도 3종, 구간 진행, 게이트 러시)'); process.exit(0); }
 
 const forever = has('--forever');
-const count = forever ? Infinity : parseInt(argv.find((a) => /^\d+$/.test(a)) || '1', 10);
+const count = forever ? Infinity : parseInt(argv.find((a) => /^\d+$/.test(a)) || (argv.includes('--arcade') ? '12' : '1'), 10);
 const useAi = !has('--no-ai');
 const model = val('--model', DEFAULT_MODEL);
 const fixedSeed = val('--seed', null);
@@ -278,22 +347,30 @@ const family = val('--family', null);
 const mpIdx = argv.indexOf('--mp');
 const mpNext = mpIdx >= 0 ? argv[mpIdx + 1] : null;
 const mp = mpIdx < 0 ? null : (mpNext && /^https?:\/\//.test(mpNext) ? mpNext : 'http://localhost:24566');
+const arcade = has('--arcade');
 const delay = parseFloat(val('--delay', '0')) * 1000;
 if (family && !FAMILIES[family]) { console.error(`--family 는 ${FAMILY_KEYS.join('|')} 중 하나`); process.exit(1); }
 
 const aiUp = useAi ? await isUp() : false;
 if (useAi && !aiUp) console.log('· omniroute 응답 없음 → 절차적 생성으로만 진행');
 else if (useAi) console.log(`· omniroute ${model}`);
+if (arcade) console.log('· 아케이드 모드 — 다 만들면 out/arcade.html 로 묶는다');
 if (mp) console.log(`· 온라인 대전 모드 — 중계 서버 ${mp} (node server/relay.js 로 띄울 것)`);
 
 let n = 0;
-const stop = () => { console.log(`\n총 ${n}개 생산. out/index.html 에서 확인.`); process.exit(0); };
+const made = [];
+const stop = () => {
+  if (arcade && made.length) console.log(`\n아케이드: out/arcade.html (${writeArcade(made)}종 수록)`);
+  console.log(`\n총 ${n}개 생산. out/index.html 에서 확인.`);
+  process.exit(0);
+};
 process.on('SIGINT', stop);
 
 while (n < count) {
   const seed = fixedSeed && n === 0 ? fixedSeed : newSeed();
-  const g = await makeGame({ seed, useAi: aiUp, model, family, mp });
+  const g = await makeGame({ seed, useAi: aiUp, model, family, mp, arcade });
   record(g);
+  made.push(g);
   n++;
   console.log(`${String(n).padStart(4)} ${g.famKo.padEnd(7)} ${g.cfg.title.padEnd(14)} ${g.file}${g.error ? '  (AI 실패: ' + g.error.slice(0, 40) + ')' : ''}`);
   if (has('--open') && n === 1) execFile('open', [path.join(OUT, g.file)]);

@@ -1,5 +1,12 @@
 // 3D 터널: 원근 투영으로 다가오는 링의 틈을 각도로 맞춰 통과한다. WebGL 없이 캔버스 투영만.
 let ang, rings, orbs, shots, ringAcc, orbAcc, passed, camRoll;
+// 쇼케이스(단독 출시본) 전용 진행: 구간이 올라가며 빨라지고, 주기적으로 링이 몰아친다
+const PHASES = ['진입', '협착', '난류', '붕괴', '심층', '임계', '무저갱'];
+let phase, phaseT, rushT, bnr;
+
+const gapNow = () => P.gapWidth / (SHOW ? 1 + (diffMul() - 1) * 0.6 : 1) * (rushT > 0 ? 0.78 : 1);
+const rateNow = () => P.ringRate * (SHOW ? diffMul() : 1) * (rushT > 0 ? 2 : 1) * (1 + phase * 0.12);
+const speedNow = () => P.tunnelSpeed * (SHOW ? diffMul() : 1) * (1 + t * P.ramp) * (1 + phase * 0.08);
 
 const proj = (z) => P.focal / (z + P.focal);            // 0(코앞) ~ 1
 const wrapPi = (d) => { while (d > Math.PI) d -= 6.283; while (d < -Math.PI) d += 6.283; return d; };
@@ -12,10 +19,22 @@ const GAME = {
   reset() {
     ang = -Math.PI / 2; rings = []; orbs = []; shots = [];
     ringAcc = 0; orbAcc = 0; passed = 0; camRoll = 0;
+    phase = 0; phaseT = 0; rushT = 0; bnr = { text: '', kicker: '', life: 0 };
   },
 
   update(dt) {
-    const speed = P.tunnelSpeed * (1 + t * P.ramp);
+    if (SHOW) {
+      phaseT += dt; rushT -= dt; bnr.life -= dt;
+      if (phaseT >= P.phaseTime) {
+        phaseT = 0; phase++;
+        const rush = phase % 3 === 0;
+        if (rush) rushT = P.rushTime;
+        bnr = { kicker: rush ? '게이트 러시' : `구간 ${phase + 1}`, text: PHASES[Math.min(phase, PHASES.length - 1)], life: 2.2 };
+        sfx(rush ? 220 : 560, .3, rush ? 'sawtooth' : 'triangle', .18);
+        shake = rush ? 14 : 6;
+      }
+    }
+    const speed = speedNow();
     camRoll += dt * P.roll;
 
     let steer = (k('KeyD', 'ArrowRight') ? 1 : 0) - (k('KeyA', 'ArrowLeft') ? 1 : 0);
@@ -25,10 +44,10 @@ const GAME = {
     }
     ang += steer * P.rotSpeed * dt;
 
-    ringAcc += dt * P.ringRate * (1 + t * P.ramp * .5);
+    ringAcc += dt * rateNow() * (1 + t * P.ramp * .5);
     while (ringAcc >= 1) {
       ringAcc--;
-      rings.push({ z: P.zFar, gap: rand() * 6.283, w: P.gapWidth, done: false });
+      rings.push({ z: P.zFar, gap: rand() * 6.283, w: gapNow(), done: false });
     }
     if (P.orbRate) {
       orbAcc += dt * P.orbRate;
@@ -39,11 +58,16 @@ const GAME = {
       r.z -= speed * dt;
       if (!r.done && r.z <= 0) {
         r.done = true;
-        if (Math.abs(wrapPi(ang - r.gap)) < r.w / 2) {
-          passed++; addScore(P.ringScore);
+        const off = Math.abs(wrapPi(ang - r.gap)), edge = r.w / 2;
+        if (off < edge) {
+          passed++;
+          const px = centerX(0) + Math.cos(ang) * P.tunnelR, py = centerY(0) + Math.sin(ang) * P.tunnelR;
+          const near = SHOW && off > edge * 0.72; // 틈 가장자리를 스치듯 통과
+          addScore(P.ringScore * (near ? 2 : 1));
           combo = Math.min(9, combo + (P.combo ? 1 : 0));
-          burst(centerX(0) + Math.cos(ang) * P.tunnelR, centerY(0) + Math.sin(ang) * P.tunnelR, 10, C.pickup, 220);
-          sfx(660 + passed % 6 * 40, .1, 'triangle', .12);
+          burst(px, py, near ? 22 : 10, near ? C.accent : C.pickup, near ? 340 : 220);
+          if (near) { toast(px, py, '아슬아슬 x2', C.accent); shake = 8; }
+          sfx((near ? 900 : 660) + passed % 6 * 40, .1, 'triangle', near ? .2 : .12);
         } else {
           shake = 20; combo = 1;
           burst(W / 2 + Math.cos(ang) * P.tunnelR, H / 2 + Math.sin(ang) * P.tunnelR, 22, C.danger, 300);
@@ -76,7 +100,13 @@ const GAME = {
     addScore(P.survivalScore * dt);
   },
 
-  hud() { return ['통과 ' + passed]; },
+  hud() {
+    const rows = ['통과 ' + passed];
+    if (SHOW) rows.push(rushT > 0 ? `게이트 러시 ${rushT.toFixed(1)}s` : `구간 ${phase + 1} · ${SHOW.names[SHOW.idx]}`);
+    return rows;
+  },
+
+  banner() { return SHOW ? bnr : null; },
 
   draw() {
     // 관 벽: 깊이별 원 + 세로 능선. 스크롤되는 오프셋을 줘야 전진하는 느낌이 난다.

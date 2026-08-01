@@ -12,6 +12,8 @@ node factory.js --no-ai      # LLM 없이 절차적으로만
 node factory.js --seed kazomi-4821   # 같은 시드 = 완전히 같은 게임
 node factory.js 10 --family racing   # 장르 고정 (arena|rhythm|racing|parkour|tunnel3d)
 node factory.js 5 --mp               # 온라인 1:1 대전 게임으로 생성
+node factory.js 12 --arcade          # 아케이드(메타게임) 한 벌 + out/arcade.html
+node factory.js --showcase           # 손으로 다듬은 단독 출시본 out/showcase.html
 node factory.js 1 --open     # 만들고 바로 열기
 node factory.js --selftest   # 자체 점검
 ```
@@ -20,8 +22,10 @@ node factory.js --selftest   # 자체 점검
 
 ## 결과물
 
-- `out/*.html` — 게임 하나당 파일 하나 (약 20KB, 오프라인 동작, localStorage에 최고점수)
+- `out/*.html` — 게임 하나당 파일 하나 (약 25KB, 오프라인 동작, localStorage에 최고점수)
 - `out/index.html` — 지금까지 만든 전부를 보여주는 갤러리
+- `out/arcade.html` — 아케이드: 뽑힌 게임들을 스테이지로 엮은 로그라이트 런
+- `out/showcase.html` — 무저갱: 공장 결과물 하나를 손으로 다듬은 단독 출시본
 - `out/games.json` — 생산 대장
 
 ## 구조
@@ -61,6 +65,35 @@ node factory.js --selftest   # 자체 점검
 
 파라미터끼리 모순되는 조합은 생성 단계에서 막는다: 중력+화면순환(바닥이 사라짐),
 orbit인데 수집품 없음(구석에서 무한 생존), 점프로 못 넘는 구멍 폭, PERFECT보다 좁은 GOOD 판정 등.
+
+## 아케이드 — 공장 자체를 게임으로
+
+```bash
+node factory.js 12 --arcade   # 게임 12개 + out/arcade.html
+```
+
+매 스테이지마다 **처음 보는 게임**이 나온다. 목표 점수를 넘기면 다음 판, 못 넘기면 런 종료.
+통과할 때마다 강화를 하나 고른다 — 여유 목숨 +1 / 제한시간 +15초 / 목표 -15% / 재도전 1회.
+목표 점수는 스테이지마다 13%씩 오른다.
+
+- 목표 점수는 각 계열이 자기 채점식으로 추정한다 (`FAMILIES[x].est`)
+- 메타게임은 게임을 iframe으로 띄우고 결과를 `postMessage` 로 받는다
+- 강화는 **쿼리로만** 전달한다 (`?lives=2&time=30&targetMul=0.9`) — 게임 파일 자체는 손대지 않는다
+
+## 무저갱 — 단독 출시본
+
+```bash
+node factory.js --showcase
+```
+
+공장이 뽑아낸 것 중 3D 터널을 골라 손으로 다듬은 기준선. 랜덤 파라미터가 아니라 고정 수치다.
+
+- 난이도 3종 (쉬움/보통/어려움) — 기록도 난이도별로 따로 남는다
+- 22초마다 구간 상승(진입 → 협착 → 난류 → 붕괴 → 심층 → 임계 → 무저갱), 배너와 함께 빨라진다
+- 3구간마다 **게이트 러시** 10초 — 링이 두 배로 몰아치고 틈이 좁아진다
+- 틈 가장자리를 스치듯 통과하면 **아슬아슬 x2**
+
+쇼케이스 전용 코드는 전부 `CFG.showcase` 로 막혀 있어서 공장이 뽑는 일반 게임은 그대로다.
 
 ## 온라인 1:1 대전
 
@@ -104,7 +137,9 @@ LLM이 준 `tweaks`는 그대로 믿지 않는다. 화이트리스트에 있는 
 `node factory.js --selftest` 은 **5개 계열 전부**를 가짜 캔버스 위에서 실제로 돌린다.
 봇이 아무 키나 두드리는 동안 예외·NaN 없이 60초를 버텨야 하고,
 `arena` 는 스폰 → 추격 → 충돌 → 사망 → 점수 기록까지 이어져야 한다.
-계열별 파라미터 200개 시드, LLM tweaks 클램프/필터, 그리고 **결정론**(같은 시드+같은 입력 = 같은 결과)도 함께 검사한다.
+계열별 파라미터 200개 시드, LLM tweaks 클램프/필터, **결정론**(같은 시드+같은 입력 = 같은 결과),
+그리고 쇼케이스는 **틈을 조준하는 봇**으로 70초 이상 버티는지까지 검사한다
+(막 두드리는 봇으론 난이도를 잴 수 없다).
 
 이 하네스로 잡은 실제 버그: `addScore` 가 매 프레임 반올림해서 초당 생존점수(프레임당 0.17)가
 통째로 0이 되던 문제. 점수 반올림은 표시할 때만 한다.

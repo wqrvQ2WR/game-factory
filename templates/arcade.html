@@ -1,0 +1,165 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>게임 공장 — 아케이드</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#08090d;color:#e9e9f2;
+  font:15px/1.5 system-ui,-apple-system,sans-serif}
+#stage{position:absolute;inset:0;border:0;width:100%;height:100%;display:none;background:#08090d}
+#stage.on{display:block}
+#bar{position:absolute;top:0;left:0;right:0;height:44px;display:flex;align-items:center;gap:18px;
+  padding:0 16px;background:linear-gradient(#0b0c11ee,#0b0c1100);z-index:5;pointer-events:none;font-size:13px}
+#bar b{font-size:16px}
+#bar .buffs{margin-left:auto;display:flex;gap:6px}
+#bar .buffs i{font-style:normal;background:#ffffff14;border-radius:99px;padding:2px 9px;font-size:12px}
+#panel{position:absolute;inset:0;display:grid;place-items:center;z-index:10;
+  background:radial-gradient(60% 60% at 50% 45%,#12131bf2,#07080bfa)}
+#panel.off{display:none}
+.card{width:min(680px,92vw);text-align:center}
+h1{font-size:42px;margin:0 0 6px;letter-spacing:-.02em}
+h2{font-size:26px;margin:0 0 10px}
+.sub{color:#8b8ea6;margin:0 0 26px}
+.big{font-size:54px;font-weight:800;margin:6px 0}
+.row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:22px}
+.opt{flex:1 1 190px;max-width:220px;background:#171922;border:1px solid #ffffff1a;border-radius:14px;
+  padding:16px 14px;cursor:pointer;text-align:left;transition:.12s;color:inherit;font:inherit}
+.opt:hover,.opt:focus{border-color:#7c8cff;transform:translateY(-3px);outline:none}
+.opt .k{font-size:11px;color:#7c8cff;letter-spacing:.1em}
+.opt .n{font-size:17px;font-weight:700;margin:6px 0 4px}
+.opt .d{font-size:12px;color:#8b8ea6;line-height:1.45}
+button.go{margin-top:26px;background:#7c8cff;color:#0b0c11;border:0;border-radius:11px;
+  padding:13px 30px;font:700 16px system-ui;cursor:pointer}
+.stat{display:flex;gap:26px;justify-content:center;color:#8b8ea6;font-size:13px;margin-top:8px}
+.tag{display:inline-block;font-size:11px;color:#8b8ea6;border:1px solid #ffffff26;border-radius:99px;padding:1px 9px;margin-bottom:12px}
+.log{margin-top:22px;max-height:150px;overflow:auto;text-align:left;font-size:12px;color:#7a7d92}
+.log div{display:flex;justify-content:space-between;padding:3px 8px;border-radius:6px}
+.log div:nth-child(odd){background:#ffffff08}
+.win{color:#6ee7a5}.lose{color:#ff7a86}
+</style>
+
+<iframe id="stage" allow="autoplay"></iframe>
+<div id="bar"></div>
+<div id="panel"><div class="card" id="card"></div></div>
+
+<script>
+const GAMES = __GAMES__;
+const BEST_KEY = 'gf:arcade:best';
+const $ = (id) => document.getElementById(id);
+const panel = $('panel'), card = $('card'), frame = $('stage'), bar = $('bar');
+
+const UPGRADES = [
+  { id: 'lives', n: '여유 목숨 +1', d: '모든 스테이지에서 목숨이 하나 늘어난다.' },
+  { id: 'time',  n: '제한시간 +15초', d: '점수를 쌓을 시간이 길어진다.' },
+  { id: 'target', n: '목표 -15%', d: '앞으로의 모든 목표 점수가 낮아진다.' },
+  { id: 'retry', n: '재도전 1회', d: '목표에 미달해도 그 스테이지를 한 번 더 시도한다.' },
+];
+
+let run = null;
+
+function newRun() {
+  const order = GAMES.slice();
+  for (let i = order.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [order[i], order[j]] = [order[j], order[i]]; }
+  run = { order, stage: 1, total: 0, lives: 0, time: 0, targetMul: 1, retry: 0, log: [], cur: null };
+}
+
+const gameFor = (stage) => run.order[(stage - 1) % run.order.length];
+const stageTargetMul = (stage) => (1 + (stage - 1) * 0.13) * run.targetMul;
+
+function drawBar() {
+  if (!run) { bar.innerHTML = ''; return; }
+  const buffs = [];
+  if (run.lives) buffs.push(`목숨 +${run.lives}`);
+  if (run.time) buffs.push(`시간 +${run.time}초`);
+  if (run.targetMul < 1) buffs.push(`목표 ${Math.round((1 - run.targetMul) * 100)}% ↓`);
+  if (run.retry) buffs.push(`재도전 ${run.retry}`);
+  bar.innerHTML = `<span>STAGE <b>${run.stage}</b></span><span>총점 <b>${run.total.toLocaleString()}</b></span>`
+    + `<span class="buffs">${buffs.map((b) => `<i>${b}</i>`).join('')}</span>`;
+}
+
+function show(html) { card.innerHTML = html; panel.classList.remove('off'); frame.classList.remove('on'); drawBar(); }
+
+function menu() {
+  const best = JSON.parse(localStorage.getItem(BEST_KEY) || 'null');
+  show(`<h1>게임 공장</h1>
+    <p class="sub">매 스테이지마다 처음 보는 게임이 나온다. 목표 점수를 넘기면 다음 판, 못 넘기면 런 종료.</p>
+    <div class="stat"><span>수록 ${GAMES.length}종</span><span>최고 기록 ${best ? `STAGE ${best.stage} · ${best.total.toLocaleString()}점` : '없음'}</span></div>
+    <button class="go" onclick="begin()">런 시작 (Enter)</button>`);
+}
+
+function begin() { newRun(); playStage(); }
+
+function playStage() {
+  const g = gameFor(run.stage);
+  run.cur = g;
+  const q = new URLSearchParams({
+    stage: run.stage, lives: run.lives, time: run.time, targetMul: stageTargetMul(run.stage).toFixed(3),
+  });
+  frame.src = './' + encodeURIComponent(g.file) + '?' + q;
+  panel.classList.add('off');
+  frame.classList.add('on');
+  drawBar();
+  setTimeout(() => frame.focus(), 60);
+}
+
+addEventListener('message', (e) => {
+  const m = e.data;
+  if (!m || m.gf !== 'over' || !run) return;
+  run.total += m.score;
+  run.log.push({ stage: m.stage, title: m.title, score: m.score, target: m.target, cleared: m.cleared });
+  if (m.cleared) { run.stage++; upgrade(m); }
+  else if (run.retry > 0) { run.retry--; retryPanel(m); }
+  else gameOver(m);
+});
+
+function retryPanel(m) {
+  show(`<span class="tag">${m.title}</span><h2 class="lose">목표 미달</h2>
+    <p class="sub">${m.score.toLocaleString()} / 목표 ${m.target.toLocaleString()}</p>
+    <p>재도전 1회를 사용한다.</p>
+    <button class="go" onclick="playStage()">다시 (Enter)</button>`);
+}
+
+function upgrade(m) {
+  const pool = UPGRADES.slice();
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  const picks = pool.slice(0, 3);
+  show(`<span class="tag">${m.title}</span><h2 class="win">통과</h2>
+    <p class="sub">${m.score.toLocaleString()} / 목표 ${m.target.toLocaleString()} · 총점 ${run.total.toLocaleString()}</p>
+    <p>강화를 하나 고르세요</p>
+    <div class="row">${picks.map((u, i) => `<button class="opt" onclick="take('${u.id}')">
+      <div class="k">${i + 1}</div><div class="n">${u.n}</div><div class="d">${u.d}</div></button>`).join('')}</div>`);
+  window.__picks = picks;
+}
+
+function take(id) {
+  if (id === 'lives') run.lives++;
+  else if (id === 'time') run.time += 15;
+  else if (id === 'target') run.targetMul *= 0.85;
+  else if (id === 'retry') run.retry++;
+  playStage();
+}
+
+function gameOver(m) {
+  const best = JSON.parse(localStorage.getItem(BEST_KEY) || 'null');
+  const rec = { stage: run.stage, total: run.total };
+  if (!best || rec.stage > best.stage || (rec.stage === best.stage && rec.total > best.total)) {
+    localStorage.setItem(BEST_KEY, JSON.stringify(rec));
+  }
+  show(`<span class="tag">${m.title}</span><h2>런 종료</h2>
+    <p class="sub">${m.score.toLocaleString()} / 목표 ${m.target.toLocaleString()} — 목표에 닿지 못했다</p>
+    <div class="big">STAGE ${run.stage}</div>
+    <div class="stat"><span>총점 ${run.total.toLocaleString()}</span><span>최고 STAGE ${Math.max(run.stage, best ? best.stage : 0)}</span></div>
+    <div class="log">${run.log.map((l) => `<div><span>${l.stage}. ${l.title}</span><span class="${l.cleared ? 'win' : 'lose'}">${l.score.toLocaleString()} / ${l.target.toLocaleString()}</span></div>`).join('')}</div>
+    <button class="go" onclick="begin()">다시 (Enter)</button>`);
+}
+
+addEventListener('keydown', (e) => {
+  if (panel.classList.contains('off')) return; // 게임 중엔 iframe이 입력을 가져간다
+  if (e.key === 'Enter' || e.key === ' ') { const b = card.querySelector('button.go'); if (b) { e.preventDefault(); b.click(); } }
+  const n = +e.key;
+  if (n >= 1 && n <= 3 && window.__picks && window.__picks[n - 1]) take(window.__picks[n - 1].id);
+});
+
+menu();
+</script>
