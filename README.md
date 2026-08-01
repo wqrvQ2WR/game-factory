@@ -10,11 +10,12 @@ node factory.js 50           # 50개
 node factory.js --forever    # Ctrl+C 칠 때까지 무한
 node factory.js --no-ai      # LLM 없이 절차적으로만
 node factory.js --seed kazomi-4821   # 같은 시드 = 완전히 같은 게임
+node factory.js 10 --family racing   # 장르 고정 (arena|rhythm|racing|parkour|tunnel3d)
 node factory.js 1 --open     # 만들고 바로 열기
 node factory.js --selftest   # 자체 점검
 ```
 
-옵션: `--model auto/coding` (기본 `auto/fast`), `--delay 2` (초), `--open`
+옵션: `--model auto/coding` (기본 `auto/fast`), `--family`, `--delay 2` (초), `--open`
 
 ## 결과물
 
@@ -26,24 +27,38 @@ node factory.js --selftest   # 자체 점검
 
 | 파일 | 역할 |
 |---|---|
-| `factory.js` | 파라미터 생성 · LLM 컨셉 · HTML 빌드 · 갤러리 · CLI |
-| `runtime.js` | 모든 게임에 그대로 박히는 엔진. `CFG`만 바뀌면 다른 게임이 된다 |
+| `factory.js` | LLM 컨셉 · HTML 빌드 · 갤러리 · CLI · 자체 점검 |
+| `src/families.js` | 장르 계열별 파라미터 생성기 |
+| `runtimes/shell.js` | 모든 장르 공용: 캔버스·입력·루프·점수·이펙트·타이틀/게임오버 |
+| `runtimes/<장르>.js` | 장르 하나당 파일 하나. `GAME = { reset, update, draw }` 만 정의 |
 | `src/rng.js` | 시드 기반 결정론적 난수 |
 | `src/palette.js` | HSL 조화 규칙으로 팔레트 생성 |
 | `src/naming.js` | LLM 없을 때 쓰는 컨셉 워드뱅크 |
 | `src/llm.js` | omniroute (OpenAI 호환) 클라이언트 |
 
-## 변주의 근원
+## 장르 5계열
 
-엔진은 하나지만 파라미터 공간이 게임을 가른다.
+`--family <이름>` 으로 고정할 수 있다. 지정 안 하면 시드가 고른다.
+
+| 계열 | 무엇 | 주요 파라미터 |
+|---|---|---|
+| `arena` | 탑다운 회피·수집·슈팅·경쟁 | 적 행동 4종, 중력, 발사, 경계 규칙, 라이벌 AI |
+| `rhythm` | 4~6레인 리듬 | BPM, 분할, 밀도, 노트 속도, 판정폭, 동시치기 |
+| `racing` | 의사 3D 도로 레이싱 | 곡률, 언덕, 최고속, 핸들링, 원심력, 상대 차 |
+| `parkour` | 자동 전진 사이드스크롤 | 주행속도, 중력, 점프, 더블점프, 구멍·장애물 빈도 |
+| `tunnel3d` | 원근 투영 3D 터널 | 터널 속도, 초점거리, 회전속도, 틈 각도, 링 빈도 |
+
+계열 안에서 또 갈린다. 예를 들어 `arena` 는
 
 - **적 행동** `chase`(추격) / `drift`(직선 반사) / `rain`(낙하) / `orbit`(중앙 회전)
 - **중력** 있으면 점프 액션, 없으면 탑다운
 - **화면 경계** `wrap`(순환) / `bounce`(튕김) / `wall`(벽)
-- **플레이어 발사** 유무 · 연사속도 · 탄속 · 적 체력
-- **수집품** 스폰율 · 점수 · 자석 반경
-- **변형** 무대 축소, 시야 제한, 시간 제한, 콤보 배수, 난이도 상승률
+- **경쟁** 수집품을 노리는 라이벌 AI (`rivalSkill` 로 실력 조절)
+- **변형** 무대 축소, 시야 제한, 시간 제한, 콤보 배수, 자석
 - **연출** 팔레트 5색 · 도형 변 개수 · 효과음 피치벤드
+
+파라미터끼리 모순되는 조합은 생성 단계에서 막는다: 중력+화면순환(바닥이 사라짐),
+orbit인데 수집품 없음(구석에서 무한 생존), 점프로 못 넘는 구멍 폭, PERFECT보다 좁은 GOOD 판정 등.
 
 ## AI 레이어 (omniroute)
 
@@ -54,10 +69,16 @@ LLM은 **기계적 규칙을 먼저 읽고** 거기에 맞는 제목·색·난�
 
 환경변수: `OMNIROUTE_BASE_URL`, `OMNIROUTE_MODEL`, `OMNIROUTE_API_KEY`
 
-LLM이 준 `tweaks`는 그대로 믿지 않고 전부 클램프한다 (`enemyRate` 0.2~4, `lives` 1~5 등).
+LLM이 준 `tweaks`는 그대로 믿지 않는다. 화이트리스트에 있는 키만, 범위 안으로 클램프해서 받는다.
+`runSpeed`·`maxSpeed` 처럼 다른 값이 파생되는 노브는 아예 화이트리스트에서 뺐다
+(구멍 폭이 점프 거리에서 계산되므로 주행속도만 바뀌면 못 넘는 맵이 나온다).
 
 ## 자체 점검
 
-`node factory.js --selftest` 은 가짜 캔버스 위에서 런타임을 실제로 40초 돌린다.
-스폰 → 추격 → 충돌 → 사망 → 점수 기록까지 이어지지 않으면 실패한다.
-파라미터 300개 시드도 함께 검사한다 (점수 획득 경로 존재, 중력+화면순환 금지, orbit+수집품 등).
+`node factory.js --selftest` 은 **5개 계열 전부**를 가짜 캔버스 위에서 실제로 돌린다.
+봇이 아무 키나 두드리는 동안 예외·NaN 없이 60초를 버텨야 하고,
+`arena` 는 스폰 → 추격 → 충돌 → 사망 → 점수 기록까지 이어져야 한다.
+계열별 파라미터 200개 시드와 LLM tweaks 클램프/필터도 함께 검사한다.
+
+이 하네스로 잡은 실제 버그: `addScore` 가 매 프레임 반올림해서 초당 생존점수(프레임당 0.17)가
+통째로 0이 되던 문제. 점수 반올림은 표시할 때만 한다.
