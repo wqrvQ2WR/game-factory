@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 게임 공장. 절차적 파라미터로 뼈대를 찍고, omniroute LLM이 컨셉/밸런스를 씌운다.
-// 사용:  node factory.js [개수|--forever] [--no-ai] [--family arena] [--seed xxx] [--model auto/fast] [--open]
+// 사용:  node factory.js [개수|--forever] [--no-ai] [--family arena] [--seed xxx] [--model auto/fast] [--mp [url]] [--open]
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -79,7 +79,7 @@ canvas{display:block;cursor:crosshair}
 <script>${bundle(cfg.family)}</script>
 `;
 
-async function makeGame({ seed = newSeed(), useAi = true, model = DEFAULT_MODEL, family } = {}) {
+async function makeGame({ seed = newSeed(), useAi = true, model = DEFAULT_MODEL, family, mp = null } = {}) {
   const rnd = makeRng(seed);
   const fam = family || rnd.pick(FAMILY_KEYS);
   const F = FAMILIES[fam];
@@ -94,16 +94,21 @@ async function makeGame({ seed = newSeed(), useAi = true, model = DEFAULT_MODEL,
       concept.error = e.message;
     }
   }
+  // 온라인 대전은 반드시 끝나야 승패가 갈린다 — 무제한이면 제한시간을 붙인다
+  if (mp && !params.timeLimit) { params.timeLimit = 60; params.timeUpMsg = '종료'; }
+
   const palette = makePalette(rnd, { hue: concept.hue, scheme: concept.scheme, dark: concept.dark });
   const cfg = {
     id: String(hashStr(String(seed))), seed: String(seed), family: fam,
     title: concept.title, subtitle: concept.subtitle, tagline: concept.tagline,
     howto: F.howto(params), palette, params,
   };
+  if (mp) cfg.mp = { url: mp };
   const file = `${slug(concept.title)}-${cfg.id.slice(0, 6)}.html`;
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(path.join(OUT, file), buildHtml(cfg));
-  return { file, cfg, source: concept.source, error: concept.error, mech: F.mech(params).join(', '), famKo: F.ko };
+  const mech = F.mech(params).concat(mp ? [`온라인 1:1 (같은 시드·같은 맵, ${params.timeLimit}초 점수 대결)`] : []).join(', ');
+  return { file, cfg, source: concept.source, error: concept.error, mech, famKo: F.ko };
 }
 
 // ---------- 갤러리 ----------
@@ -115,7 +120,7 @@ function updateGallery() {
   const byFam = {};
   for (const g of games) byFam[g.famKo] = (byFam[g.famKo] || 0) + 1;
   const cards = games.slice().reverse().map((g) => `<a class="card" href="./${encodeURIComponent(g.file)}" style="--bg:${g.bg};--fg:${g.fg};--ac:${g.ac}">
-  <div class="top"><div class="sw"><i style="background:${g.player}"></i><i style="background:${g.enemy}"></i><i style="background:${g.pickup}"></i></div><span class="fam">${esc(g.famKo || '')}</span></div>
+  <div class="top"><div class="sw"><i style="background:${g.player}"></i><i style="background:${g.enemy}"></i><i style="background:${g.pickup}"></i></div><span class="fam">${esc(g.famKo || '')}${g.mp ? ' · 온라인' : ''}</span></div>
   <h2>${esc(g.title)}</h2><p class="sub">${esc(g.subtitle)}</p><p class="tag">${esc(g.tagline)}</p>
   <p class="mech">${esc(g.mech)}</p></a>`).join('\n');
   fs.writeFileSync(path.join(OUT, 'index.html'), `<!doctype html><meta charset="utf-8">
@@ -137,7 +142,7 @@ h2{font-size:19px;margin:0}.sub{margin:2px 0 0;font-size:12px;color:var(--ac);le
 function record(g) {
   const games = readDb(), c = g.cfg;
   games.push({
-    file: g.file, seed: c.seed, family: c.family, famKo: g.famKo,
+    file: g.file, seed: c.seed, family: c.family, famKo: g.famKo, mp: !!c.mp,
     title: c.title, subtitle: c.subtitle, tagline: c.tagline,
     mech: g.mech, at: new Date().toISOString(), source: g.source,
     bg: c.palette.bg, fg: c.palette.text, ac: c.palette.accent,
@@ -182,11 +187,12 @@ function selftest() {
   assert(before !== undefined, 'bpm 파라미터 사라짐');
 
   for (const fam of FAMILY_KEYS) simTest(fam);
-  console.log('셀프테스트 통과 ✓ (' + FAMILY_KEYS.join(', ') + ')');
+  determinismTest();
+  console.log('셀프테스트 통과 ✓ (' + FAMILY_KEYS.join(', ') + ', 결정론)');
 }
 
-// 가짜 캔버스 위에서 런타임을 실제로 돌린다. 봇이 아무 키나 두드려도 터지지 않아야 한다.
-function simTest(family) {
+// 가짜 캔버스 위에서 런타임을 실제로 돌린다.
+function runSim(family, params, { frames = 60 * 60, script, id = 'sim' } = {}) {
   const noop = () => {};
   const ctx = new Proxy({}, {
     get: (t, k) => (k === 'createRadialGradient' ? () => ({ addColorStop: noop }) : k in t ? t[k] : noop),
@@ -196,11 +202,7 @@ function simTest(family) {
   const store = {};
   const localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => (store[k] = String(v)) };
   let now = 0, pending = null;
-
-  const rnd = makeRng('sim-' + family);
-  const params = FAMILIES[family].params(rnd);
-  if (family === 'arena') Object.assign(params, { enemyMode: 'chase', enemySpeed: 400, enemyRate: 6, enemyMax: 40, lives: 1, survivalScore: 10, timeLimit: 0, gravity: 0, shoot: false, edge: 'wall' });
-  const cfg = { id: 'sim', family, title: 't', subtitle: 's', tagline: 'x', howto: 'x', palette: makePalette(rnd, {}), params };
+  const cfg = { id, family, title: 't', subtitle: 's', tagline: 'x', howto: 'x', palette: makePalette(makeRng(id), {}), params };
 
   const g = globalThis;
   new Function('CFG', 'document', 'addEventListener', 'devicePixelRatio', 'innerWidth', 'innerHeight',
@@ -209,16 +211,12 @@ function simTest(family) {
     cfg, { getElementById: () => cvs }, noop, 1, 960, 600,
     { now: () => now }, (cb) => (pending = cb), localStorage, undefined, undefined
   );
-
   assert(typeof g.onkeydown === 'function', `${family}: 입력 핸들러가 안 걸림`);
-  const POOL = ['KeyA', 'KeyD', 'KeyW', 'KeyS', 'KeyF', 'KeyJ', 'KeyK', 'KeyL', 'Space'];
+
   g.onkeydown({ code: 'KeyD', preventDefault: noop });
-  for (let i = 0; i < 60 * 60; i++) {
+  for (let i = 0; i < frames; i++) {
     now += 16.7;
-    if (i % 7 === 0) {
-      const c = POOL[(i / 7) % POOL.length | 0];
-      g.onkeyup({ code: c }); g.onkeydown({ code: c, preventDefault: noop });
-    }
+    script(i, g, noop);
     const cb = pending; pending = null;
     if (!cb) break;
     cb(now);
@@ -226,10 +224,39 @@ function simTest(family) {
     if (!isFinite(p.score)) assert(false, `${family}: ${(i / 60).toFixed(1)}초에 점수가 NaN`);
     if (p.state === 'over') break;
   }
-  const p = g.__probe();
+  return { ...g.__probe(), store };
+}
+
+const POOL = ['KeyA', 'KeyD', 'KeyW', 'KeyS', 'KeyF', 'KeyJ', 'KeyK', 'KeyL', 'Space'];
+const mashKeys = (i, g, noop) => {
+  if (i % 7) return;
+  const c = POOL[(i / 7) % POOL.length | 0];
+  g.onkeyup({ code: c }); g.onkeydown({ code: c, preventDefault: noop });
+};
+
+// 봇이 아무 키나 두드려도 터지지 않아야 한다.
+function simTest(family) {
+  const rnd = makeRng('sim-' + family);
+  const params = FAMILIES[family].params(rnd);
+  if (family === 'arena') Object.assign(params, { enemyMode: 'chase', enemySpeed: 400, enemyRate: 6, enemyMax: 40, lives: 1, survivalScore: 10, timeLimit: 0, gravity: 0, shoot: false, edge: 'wall' });
+  const p = runSim(family, params, { script: mashKeys });
   assert(p.t > 1, `${family}: 시뮬이 진행되지 않음`);
   assert(isFinite(p.score) && p.score >= 0, `${family}: 점수 비정상 (${p.score})`);
-  if (family === 'arena') assert(p.state === 'over' && +store['gf:sim:best'] > 0, 'arena: 사망→점수기록 경로가 끊김');
+  if (family === 'arena') assert(p.state === 'over' && +p.store['gf:sim:best'] > 0, 'arena: 사망→점수기록 경로가 끊김');
+}
+
+// 온라인 대전이 공정하려면: 같은 시드 + 같은 입력 = 완전히 같은 결과.
+// 시드 난수(rand)와 고정 타임스텝이 깨지면 여기서 걸린다.
+function determinismTest() {
+  for (const family of FAMILY_KEYS) {
+    const params = FAMILIES[family].params(makeRng('det-' + family));
+    const a = runSim(family, params, { script: mashKeys, frames: 60 * 25, id: '777' });
+    const b = runSim(family, params, { script: mashKeys, frames: 60 * 25, id: '777' });
+    assert(a.score === b.score && a.t === b.t && a.lives === b.lives,
+      `${family}: 같은 시드·같은 입력인데 결과가 다름 (${a.score} vs ${b.score}) — 게임플레이에서 Math.random을 쓰고 있지 않은지 확인`);
+    // 점수는 장르마다 0일 수 있다(리듬은 막 두드리면 다 놓친다). 대신 시뮬이 실제로 돌았는지는 확인.
+    assert(a.t > 1 && a.state === b.state, `${family}: 결정론 테스트가 제대로 안 돌았음`);
+  }
 }
 
 // ---------- CLI ----------
@@ -248,12 +275,16 @@ const useAi = !has('--no-ai');
 const model = val('--model', DEFAULT_MODEL);
 const fixedSeed = val('--seed', null);
 const family = val('--family', null);
+const mpIdx = argv.indexOf('--mp');
+const mpNext = mpIdx >= 0 ? argv[mpIdx + 1] : null;
+const mp = mpIdx < 0 ? null : (mpNext && /^https?:\/\//.test(mpNext) ? mpNext : 'http://localhost:24566');
 const delay = parseFloat(val('--delay', '0')) * 1000;
 if (family && !FAMILIES[family]) { console.error(`--family 는 ${FAMILY_KEYS.join('|')} 중 하나`); process.exit(1); }
 
 const aiUp = useAi ? await isUp() : false;
 if (useAi && !aiUp) console.log('· omniroute 응답 없음 → 절차적 생성으로만 진행');
 else if (useAi) console.log(`· omniroute ${model}`);
+if (mp) console.log(`· 온라인 대전 모드 — 중계 서버 ${mp} (node server/relay.js 로 띄울 것)`);
 
 let n = 0;
 const stop = () => { console.log(`\n총 ${n}개 생산. out/index.html 에서 확인.`); process.exit(0); };
@@ -261,7 +292,7 @@ process.on('SIGINT', stop);
 
 while (n < count) {
   const seed = fixedSeed && n === 0 ? fixedSeed : newSeed();
-  const g = await makeGame({ seed, useAi: aiUp, model, family });
+  const g = await makeGame({ seed, useAi: aiUp, model, family, mp });
   record(g);
   n++;
   console.log(`${String(n).padStart(4)} ${g.famKo.padEnd(7)} ${g.cfg.title.padEnd(14)} ${g.file}${g.error ? '  (AI 실패: ' + g.error.slice(0, 40) + ')' : ''}`);

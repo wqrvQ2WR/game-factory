@@ -11,11 +11,12 @@ node factory.js --forever    # Ctrl+C 칠 때까지 무한
 node factory.js --no-ai      # LLM 없이 절차적으로만
 node factory.js --seed kazomi-4821   # 같은 시드 = 완전히 같은 게임
 node factory.js 10 --family racing   # 장르 고정 (arena|rhythm|racing|parkour|tunnel3d)
+node factory.js 5 --mp               # 온라인 1:1 대전 게임으로 생성
 node factory.js 1 --open     # 만들고 바로 열기
 node factory.js --selftest   # 자체 점검
 ```
 
-옵션: `--model auto/coding` (기본 `auto/fast`), `--family`, `--delay 2` (초), `--open`
+옵션: `--model auto/coding` (기본 `auto/fast`), `--family`, `--mp [url]`, `--delay 2` (초), `--open`
 
 ## 결과물
 
@@ -28,6 +29,7 @@ node factory.js --selftest   # 자체 점검
 | 파일 | 역할 |
 |---|---|
 | `factory.js` | LLM 컨셉 · HTML 빌드 · 갤러리 · CLI · 자체 점검 |
+| `server/relay.js` | 온라인 대전 중계 서버 (의존성 0) |
 | `src/families.js` | 장르 계열별 파라미터 생성기 |
 | `runtimes/shell.js` | 모든 장르 공용: 캔버스·입력·루프·점수·이펙트·타이틀/게임오버 |
 | `runtimes/<장르>.js` | 장르 하나당 파일 하나. `GAME = { reset, update, draw }` 만 정의 |
@@ -60,6 +62,30 @@ node factory.js --selftest   # 자체 점검
 파라미터끼리 모순되는 조합은 생성 단계에서 막는다: 중력+화면순환(바닥이 사라짐),
 orbit인데 수집품 없음(구석에서 무한 생존), 점프로 못 넘는 구멍 폭, PERFECT보다 좁은 GOOD 판정 등.
 
+## 온라인 1:1 대전
+
+```bash
+node server/relay.js                 # 중계 서버 (기본 포트 24566)
+node factory.js 5 --mp               # 대전용 게임 생성
+```
+
+만든 게임을 열면 방 코드와 링크가 뜬다. 상대가 그 링크로 들어오면 **3초 뒤 동시 시작**,
+제한시간이 끝나면 점수로 승패가 갈린다. HUD에 상대 점수와 점수차가 실시간으로 뜬다.
+
+설계상 **게임 상태는 전혀 동기화하지 않는다.** 서버가 넘기는 건 방 시드와 점수뿐이고,
+양쪽이 같은 시드로 **같은 맵을 각자 돌린다**. 그래서
+
+- 렉이 판정에 영향을 주지 않는다 (롤백·보간·권위 서버 전부 불필요)
+- 200ms 폴링으로 충분하다 (WebSocket도 필요 없다 → 의존성 0)
+- 대신 상대를 직접 방해하는 상호작용은 없다. 순수 동일 조건 점수 대결이다.
+
+이게 성립하려면 두 클라이언트가 정확히 같은 맵을 만들어야 하므로, 런타임은
+**시드 난수 `rand()` + 고정 타임스텝(1/60)** 을 쓴다. 파티클·화면흔들림 같은 연출만 `Math.random`이다
+(연출이 시드 난수를 소비하면 뽑기 순서가 어긋나 맵이 갈린다).
+`--selftest` 의 결정론 검사가 이 규칙을 지킨다.
+
+다른 기기에서 붙이려면 릴레이 주소를 넘겨서 생성한다: `--mp http://내주소:24566`
+
 ## AI 레이어 (omniroute)
 
 `http://127.0.0.1:20128/v1` 의 OpenAI 호환 엔드포인트로 붙는다.
@@ -78,7 +104,7 @@ LLM이 준 `tweaks`는 그대로 믿지 않는다. 화이트리스트에 있는 
 `node factory.js --selftest` 은 **5개 계열 전부**를 가짜 캔버스 위에서 실제로 돌린다.
 봇이 아무 키나 두드리는 동안 예외·NaN 없이 60초를 버텨야 하고,
 `arena` 는 스폰 → 추격 → 충돌 → 사망 → 점수 기록까지 이어져야 한다.
-계열별 파라미터 200개 시드와 LLM tweaks 클램프/필터도 함께 검사한다.
+계열별 파라미터 200개 시드, LLM tweaks 클램프/필터, 그리고 **결정론**(같은 시드+같은 입력 = 같은 결과)도 함께 검사한다.
 
 이 하네스로 잡은 실제 버그: `addScore` 가 매 프레임 반올림해서 초당 생존점수(프레임당 0.17)가
 통째로 0이 되던 문제. 점수 반올림은 표시할 때만 한다.

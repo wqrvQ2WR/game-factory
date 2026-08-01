@@ -23,11 +23,11 @@ const GAME = {
       beatAcc -= beat;
       const phrase = 1 + Math.min(1.4, t * P.ramp);
       const dens = Math.min(.95, P.density * phrase) * (beatIdx % P.subdiv === 0 ? 1 : .45);
-      if (Math.random() < dens) {
-        const lane = (Math.random() * P.lanes) | 0;
+      if (rand() < dens) {
+        const lane = (rand() * P.lanes) | 0;
         notes.push({ lane, y: -30 });
-        if (P.chords && Math.random() < .18) {
-          const l2 = (lane + 1 + ((Math.random() * (P.lanes - 1)) | 0)) % P.lanes;
+        if (P.chords && rand() < .18) {
+          const l2 = (lane + 1 + ((rand() * (P.lanes - 1)) | 0)) % P.lanes;
           notes.push({ lane: l2, y: -30 });
         }
       }

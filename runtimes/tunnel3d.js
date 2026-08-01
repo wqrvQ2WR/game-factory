@@ -28,11 +28,11 @@ const GAME = {
     ringAcc += dt * P.ringRate * (1 + t * P.ramp * .5);
     while (ringAcc >= 1) {
       ringAcc--;
-      rings.push({ z: P.zFar, gap: Math.random() * 6.283, w: P.gapWidth, done: false });
+      rings.push({ z: P.zFar, gap: rand() * 6.283, w: P.gapWidth, done: false });
     }
     if (P.orbRate) {
       orbAcc += dt * P.orbRate;
-      while (orbAcc >= 1) { orbAcc--; orbs.push({ z: P.zFar, a: Math.random() * 6.283 }); }
+      while (orbAcc >= 1) { orbAcc--; orbs.push({ z: P.zFar, a: rand() * 6.283 }); }
     }
 
     for (const r of rings) {

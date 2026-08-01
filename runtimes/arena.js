@@ -155,18 +155,18 @@ function spawnEnemy() {
   const a = arena(), sp = P.enemySpeed * ramp(), s = P.enemySize * rr(.75, 1.35);
   let x, y, vx = 0, vy = 0, ang = 0;
   if (P.enemyMode === 'rain') { x = rr(a.x, a.x + a.w); y = a.y - 40; vy = sp; }
-  else if (P.enemyMode === 'orbit') { ang = Math.random() * 6.283; x = W / 2; y = H / 2; }
+  else if (P.enemyMode === 'orbit') { ang = rand() * 6.283; x = W / 2; y = H / 2; }
   else {
-    const side = (Math.random() * 4) | 0;
+    const side = (rand() * 4) | 0;
     x = side === 0 ? a.x - 30 : side === 1 ? a.x + a.w + 30 : rr(a.x, a.x + a.w);
     y = side === 2 ? a.y - 30 : side === 3 ? a.y + a.h + 30 : rr(a.y, a.y + a.h);
     const d = Math.atan2(player.y - y, player.x - x) + (P.enemyMode === 'drift' ? rr(-.9, .9) : 0);
     vx = Math.cos(d) * sp; vy = Math.sin(d) * sp;
   }
-  enemies.push({ x, y, vx, vy, r: s, ang, orbR: rr(90, Math.min(a.w, a.h) / 2 - 20), spin: rr(.4, 1.1) * (Math.random() < .5 ? -1 : 1), rot: 0, hp: P.enemyHp });
+  enemies.push({ x, y, vx, vy, r: s, ang, orbR: rr(90, Math.min(a.w, a.h) / 2 - 20), spin: rr(.4, 1.1) * (rand() < .5 ? -1 : 1), rot: 0, hp: P.enemyHp });
 }
 
 function spawnPickup() {
   const a = arena();
-  pickups.push({ x: rr(a.x + 30, a.x + a.w - 30), y: rr(a.y + 30, a.y + a.h - 30), r: 11, ph: Math.random() * 6.283 });
+  pickups.push({ x: rr(a.x + 30, a.x + a.w - 30), y: rr(a.y + 30, a.y + a.h - 30), r: 11, ph: rand() * 6.283 });
 }

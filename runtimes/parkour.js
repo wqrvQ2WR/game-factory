@@ -13,13 +13,13 @@ function generateAhead() {
     plats.push({ x: genX, w, y });
 
     // 발판 위 장애물
-    if (Math.random() < P.obsRate && w > 220) {
+    if (rand() < P.obsRate && w > 220) {
       const ox = genX + rr(90, w - 90);
-      if (Math.random() < .5) obs.push({ x: ox, y: y - 46, w: 26, h: 46, type: 'block' });
+      if (rand() < .5) obs.push({ x: ox, y: y - 46, w: 26, h: 46, type: 'block' });
       else obs.push({ x: ox, y: y - P.bodyH - 52, w: 90, h: 52, type: 'ceil' });
     }
     lastY = y;
-    genX += w + (Math.random() < P.gapRate ? rr(P.gapMin, P.gapMax) : 0);
+    genX += w + (rand() < P.gapRate ? rr(P.gapMin, P.gapMax) : 0);
   }
   plats = plats.filter(p => p.x + p.w > camX - 200);
   obs = obs.filter(o => o.x + o.w > camX - 200);
