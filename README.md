@@ -24,6 +24,17 @@ node factory.js --selftest   # 자체 점검
 
 옵션: `--model auto/coding` (기본 `auto/fast`), `--family`, `--mp [url]`, `--delay 2` (초), `--open`
 
+## 갤러리 서버
+
+```bash
+node server/gallery.js        # http://localhost:8791 (의존성 0)
+```
+
+`out/` 을 서빙하면서 `POST /save` 를 받는다. **AI 제작기에서 만든 게임은 통과하는 즉시 갤러리에 자동 저장된다** —
+브라우저는 파일을 못 쓰니 저장은 이 서버를 거친다. 안 띄우고 `file://` 로 열면 자동 저장 대신 내려받기만 된다.
+
+`out/` 밖 경로는 서빙하지 않고, 게임 HTML이 아닌 본문은 저장을 거부한다.
+
 ## 결과물
 
 - `out/*.html` — 게임 하나당 파일 하나 (약 25KB, 오프라인 동작, localStorage에 최고점수)

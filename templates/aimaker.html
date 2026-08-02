@@ -68,6 +68,7 @@ button.act:disabled{opacity:.45;cursor:default}
       <button class="act" id="dice">🎲 태그 랜덤</button>
       <button class="act" id="dl" disabled>⬇ 내려받기</button>
       <button class="act" id="src" disabled>&lt;/&gt; 코드</button>
+      <a class="act" href="./index.html" target="_blank" style="text-decoration:none">🗂 갤러리</a>
       <span class="stat" id="stat"></span>
     </div>
   </div>
@@ -217,6 +218,27 @@ async function verify(page) {
   return null;   // 통과
 }
 
+// ── 갤러리에 저장 ──
+// 브라우저는 파일을 못 쓴다. out/ 을 서빙하는 server/gallery.js 가 POST /save 를 받아 대신 써 준다.
+async function saveToGallery(page, tags, model, attempts) {
+  if (location.protocol === 'file:') {
+    log('dim', 'file:// 로 열려 있어 자동 저장은 안 됩니다 — node server/gallery.js 로 띄우면 저장됩니다');
+    return;
+  }
+  const title = (page.match(/<title>([^<]*)<\/title>/i)?.[1] || 'AI 게임').trim();
+  try {
+    const r = await fetch('/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: page, title, tags, model, attempts }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    log('ok', `갤러리에 저장됨 — ${title} (총 ${j.total}개)`);
+  } catch (e) {
+    log('no', `갤러리 저장 실패: ${e.message} · server/gallery.js 가 떠 있는지 확인하세요 (지금은 내려받기로만 보관됩니다)`);
+  }
+}
+
 // ── 생성 루프 ──
 $('go').onclick = async () => {
   if (busy) return;
@@ -251,6 +273,7 @@ $('go').onclick = async () => {
         log('ok', `완성 · ${((Date.now() - t0) / 1000).toFixed(1)}초 · ${(page.length / 1024).toFixed(1)}KB`);
         $('dl').disabled = $('src').disabled = false;
         $('stat').textContent = tags.join(' · ');
+        await saveToGallery(page, tags, used, attempt + 1);
         break;
       }
       log('no', bad);
