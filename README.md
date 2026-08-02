@@ -16,8 +16,9 @@ node factory.js 12 --arcade          # 아케이드(메타게임) 한 벌 + out/
 node factory.js --showcase           # 손으로 다듬은 단독 출시본 out/showcase.html
 node factory.js --maker              # 직접 만드는 제작기 out/maker.html
 node factory.js --aimaker            # AI 제작기 out/aimaker.html (태그 → AI가 코드를 직접 씀)
-node factory.js --ai                 # 같은 걸 터미널에서 — 태그를 골라가며
-node factory.js 3 --ai --random      # 묻지 않고 랜덤 태그로 3개
+node factory.js --ai                 # 랜덤 태그로 1개 (아무것도 묻지 않음)
+node factory.js 5 --ai               # 매번 다른 랜덤 태그로 5개
+node factory.js --ai --pick          # 태그를 골라가며
 node factory.js --ai --tags "2D,퍼즐,마우스만" --open
 node factory.js 1 --open     # 만들고 바로 열기
 node factory.js --selftest   # 자체 점검
@@ -128,14 +129,15 @@ node factory.js 12 --arcade   # 게임 12개 + out/arcade.html
 
 ```bash
 node factory.js --aimaker     # 브라우저 툴 (out/aimaker.html)
-node factory.js --ai          # 터미널에서 태그를 골라가며 (브라우저 툴과 같은 체계)
-node factory.js 3 --ai --random                          # 묻지 않고 랜덤 태그로 3개
-node factory.js --ai --tags "2D,퍼즐,고정 화면,마우스만"     # 태그 직접 지정
+node factory.js --ai          # 랜덤 태그로 1개 — 아무것도 묻지 않는다
+node factory.js 5 --ai        # 매번 다른 랜덤 태그로 5개
+node factory.js --ai --pick   # 태그를 골라가며 (번호 입력)
+node factory.js --ai --tags "2D,퍼즐,고정 화면,마우스만"
 ```
 
-CLI도 브라우저 툴과 똑같이 굴러간다 — 태그 7갈래를 번호로 고르고(엔터=건너뛰기, `r`=이 항목 랜덤, `q`=전부 랜덤),
-그룹 정원과 충돌 규칙을 그대로 지키며, 만든 게임은 검증을 통과한 뒤 갤러리에 들어간다.
-입력이 끊기면(Ctrl+D·파이프 종료) 고른 것은 두고 빈 그룹만 랜덤으로 채워 이어간다.
+**기본은 랜덤이다.** 그냥 `--ai` 만 주면 태그를 알아서 굴려 만든다. 개수를 주면 판마다 태그를 새로 굴린다.
+`--pick` 을 붙이면 브라우저 툴과 같은 7갈래를 번호로 고른다 (엔터=건너뛰기, `r`=이 항목 랜덤, `q`=전부 랜덤).
+어느 쪽이든 그룹 정원과 충돌 규칙을 지키고, 검증을 통과한 게임만 갤러리에 들어간다.
 
 태그는 7갈래 (`src/tags.js`): 차원 · 장르 · 시점 · 소재 · 진행 · 조작 · 맛.
 `2D / 의사 3D / 아이소메트릭 / 와이어프레임 3D` × `액션·퍼즐·슈팅·리듬·레이싱·플랫포머·전략·타워디펜스·방치형…`

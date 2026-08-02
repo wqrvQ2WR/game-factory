@@ -2,8 +2,9 @@
 // 게임 공장. 절차적 파라미터로 뼈대를 찍고, omniroute LLM이 컨셉/밸런스를 씌운다.
 // 사용:  node factory.js [개수|--forever] [--no-ai] [--family arena] [--seed xxx]
 //        [--model auto/fast] [--mp [url]] [--arcade] [--open]
-// AI:    node factory.js --ai            (터미널에서 태그를 골라가며 — 브라우저 툴과 같은 체계)
-//        node factory.js 3 --ai --random (묻지 않고 랜덤 태그로 3개)
+// AI:    node factory.js --ai            (랜덤 태그로 1개 — 아무것도 묻지 않는다)
+//        node factory.js 5 --ai          (매번 다른 랜덤 태그로 5개)
+//        node factory.js --ai --pick     (태그를 골라가며)
 //        node factory.js --ai --tags "2D,퍼즐,마우스만"  --open
 import fs from 'node:fs';
 import path from 'node:path';
@@ -495,10 +496,9 @@ const stop = () => {
 process.on('SIGINT', stop);
 
 // AI 모드: 엔진 없이 AI가 게임 코드를 통째로 쓴다. 만든 뒤 실제로 돌려보고 안 되면 오류를 물려 고치게 한다.
-// 태그를 안 주고 터미널에서 돌리면 브라우저 툴처럼 골라가며 만든다.
-// --random 이면 묻지 않고 굴리고, --pick 이면 파이프로 넣어도 물어본다.
+// 기본은 묻지 않고 랜덤. 고르고 싶을 때만 --pick.
 let chosenTags = aiTags.length ? aiTags : null;
-if (aiMode && !chosenTags && !has('--random') && (process.stdin.isTTY || has('--pick'))) chosenTags = await pickTags();
+if (aiMode && !chosenTags && has('--pick')) chosenTags = await pickTags();
 
 while (aiMode && n < count) {
   const tags = chosenTags || randomTags();
