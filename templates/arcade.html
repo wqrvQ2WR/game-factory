@@ -44,7 +44,7 @@ button.go{margin-top:26px;background:#7c8cff;color:#0b0c11;border:0;border-radiu
 <div id="panel"><div class="card" id="card"></div></div>
 
 <script>
-const GAMES = __GAMES__;
+let GAMES = __GAMES__;
 const BEST_KEY = 'gf:arcade:best';
 const $ = (id) => document.getElementById(id);
 const panel = $('panel'), card = $('card'), frame = $('stage'), bar = $('bar');
@@ -161,5 +161,15 @@ addEventListener('keydown', (e) => {
   if (n >= 1 && n <= 3 && window.__picks && window.__picks[n - 1]) take(window.__picks[n - 1].id);
 });
 
-menu();
+// 공장이 계속 돌면 게임이 늘어난다. 빌드 시점 목록에 갇히지 않게 games.json 을 읽어 최신으로 갈아끼운다.
+// (라즈베리파이처럼 켜 두고 계속 생성하는 환경에서 이게 없으면 영원히 처음 12개만 돈다)
+fetch('./games.json', { cache: 'no-store' })
+  .then((r) => r.json())
+  .then((db) => {
+    const live = db.filter((g) => g.arcade && g.target > 0)
+      .map((g) => ({ file: g.file, title: g.title, famKo: g.famKo, target: g.target }));
+    if (live.length >= 3) GAMES = live;
+  })
+  .catch(() => {})
+  .finally(menu);
 </script>

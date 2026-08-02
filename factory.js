@@ -18,6 +18,7 @@ import { TAG_GROUPS, randomTags, conflictsIn, fillRandom } from './src/tags.js';
 import { generateGame, verifyHeadless, pickTags } from './src/aigen.js';
 import { chat, extractJson, isUp, DEFAULT_MODEL } from './src/llm.js';
 
+let KEEP = 0;   // --keep N (무한 생성 시 보존 개수)
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(ROOT, 'out');
 const rt = (n) => fs.readFileSync(path.join(ROOT, 'runtimes', n + '.js'), 'utf8');
@@ -177,16 +178,31 @@ ${fs.existsSync(path.join(OUT, 'aimaker.html')) ? '<a href="./aimaker.html"><b>A
 </div><div class="grid">${cards}</div>`);
 }
 
+// 무한 생성이면 out/ 이 끝없이 커진다. --keep N 이면 최신 N개만 남기고 파일까지 지운다.
+export function pruneDb(keep) {
+  if (!keep || keep < 1) return 0;
+  const games = readDb();
+  if (games.length <= keep) return 0;
+  const drop = games.slice(0, games.length - keep);
+  for (const g of drop) {
+    try { fs.unlinkSync(path.join(OUT, g.file)); } catch {}
+  }
+  fs.writeFileSync(dbPath(), JSON.stringify(games.slice(-keep), null, 1));
+  return drop.length;
+}
+
 function record(g) {
   const games = readDb(), c = g.cfg;
   games.push({
     file: g.file, seed: c.seed, family: c.family, famKo: g.famKo, mp: !!c.mp, tags: g.tags,
+    arcade: !!c.arcade, target: g.target || 0,
     title: c.title, subtitle: c.subtitle, tagline: c.tagline,
     mech: g.mech, at: new Date().toISOString(), source: g.source,
     bg: c.palette.bg, fg: c.palette.text, ac: c.palette.accent,
     player: c.palette.player, enemy: c.palette.enemy, pickup: c.palette.pickup,
   });
   fs.writeFileSync(dbPath(), JSON.stringify(games, null, 1));
+  if (KEEP) pruneDb(KEEP);
   updateGallery();
 }
 
@@ -475,6 +491,8 @@ const mpNext = mpIdx >= 0 ? argv[mpIdx + 1] : null;
 const mp = mpIdx < 0 ? null : (mpNext && /^https?:\/\//.test(mpNext) ? mpNext : 'http://localhost:24566');
 const arcade = has('--arcade');
 const aiMode = has('--ai');
+KEEP = parseInt(val('--keep', '0'), 10) || 0;
+if (KEEP) console.log(`· 최신 ${KEEP}개만 보존 (넘치면 오래된 것부터 파일까지 삭제)`);
 const aiTags = (val('--tags', '') || '').split(',').map((x) => x.trim()).filter(Boolean);
 const aiExtra = val('--extra', '');
 const delay = parseFloat(val('--delay', '0')) * 1000;
@@ -519,6 +537,7 @@ while (aiMode && n < count) {
     bg: '#12131a', fg: '#e9e9f2', ac: '#7c8cff', player: '#7c8cff', enemy: '#ff7a86', pickup: '#6ee7a5',
   });
   fs.writeFileSync(dbPath(), JSON.stringify(games, null, 1));
+  if (KEEP) pruneDb(KEEP);
   updateGallery();
   console.log(`   ✓ ${title} → out/${file} (시도 ${r.attempts}회)`);
   if (has('--open') && n === 1) execFile('open', [path.join(OUT, file)]);

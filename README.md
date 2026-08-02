@@ -22,9 +22,35 @@ node factory.js --ai --pick          # 태그를 골라가며
 node factory.js --ai --tags "2D,퍼즐,마우스만" --open
 node factory.js 1 --open     # 만들고 바로 열기
 node factory.js --selftest   # 자체 점검
+node factory.js --forever --keep 300  # 무한 생성 (최신 300개만 보존)
 ```
 
 옵션: `--model auto/coding` (기본 `auto/fast`), `--family`, `--mp [url]`, `--delay 2` (초), `--open`
+
+## 라즈베리파이 5에 상주시키기
+
+```bash
+git clone https://github.com/wqrvQ2WR/game-factory && cd game-factory
+bash deploy/pi/setup.sh          # 갤러리 서버 + 무한 생성기를 systemd 유저 서비스로
+bash deploy/pi/kiosk.sh          # (선택) 부팅하면 아케이드가 전체화면으로
+```
+
+- **AI 없이도 무한히 돈다.** omniroute 주소를 안 적으면 절차적 생성으로 떨어져서 파이 혼자 계속 만든다.
+  맥의 omniroute를 쓰려면 `~/.config/game-factory.env` 에 Tailscale 주소를 적는다.
+- **디스크가 안 찬다.** 생성기는 `--keep 300` 으로 돌아 최신 300개만 남기고 오래된 건 파일까지 지운다
+  (게임 하나 ~25KB, 25초 간격이면 그냥 두면 하루 100MB씩 는다).
+- **아케이드가 새 게임을 자동으로 흡수한다.** `arcade.html` 이 실행할 때 `games.json` 을 읽으므로,
+  공장이 도는 동안 수록 목록이 계속 갈린다. 빌드 시점 12개에 갇히지 않는다.
+- 바깥에서 놀려면 `tailscale funnel 8791`.
+
+| 명령 | |
+|---|---|
+| `systemctl --user status game-factory-forever` | 상태 |
+| `journalctl --user -u game-factory-forever -f` | 로그 |
+| `systemctl --user stop game-factory-forever` | 생성만 멈춤(갤러리는 유지) |
+| `KEEP=1000 DELAY=60 bash deploy/pi/setup.sh` | 보존 개수·생성 간격 바꿔 재설치 |
+
+파이 5 기준 절차적 생성은 한 판에 1초 안쪽, AI 생성은 모델·회선에 따라 30초~2분이다.
 
 ## 갤러리 서버
 
