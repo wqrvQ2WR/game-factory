@@ -2,6 +2,9 @@
 // 게임 공장. 절차적 파라미터로 뼈대를 찍고, omniroute LLM이 컨셉/밸런스를 씌운다.
 // 사용:  node factory.js [개수|--forever] [--no-ai] [--family arena] [--seed xxx]
 //        [--model auto/fast] [--mp [url]] [--arcade] [--open]
+// AI:    node factory.js --ai            (터미널에서 태그를 골라가며 — 브라우저 툴과 같은 체계)
+//        node factory.js 3 --ai --random (묻지 않고 랜덤 태그로 3개)
+//        node factory.js --ai --tags "2D,퍼즐,마우스만"  --open
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,8 +13,8 @@ import { makeRng, newSeed, hashStr } from './src/rng.js';
 import { makePalette } from './src/palette.js';
 import { proceduralConcept, THEMES } from './src/naming.js';
 import { FAMILIES, FAMILY_KEYS } from './src/families.js';
-import { TAG_GROUPS, randomTags, conflictsIn } from './src/tags.js';
-import { generateGame, verifyHeadless } from './src/aigen.js';
+import { TAG_GROUPS, randomTags, conflictsIn, fillRandom } from './src/tags.js';
+import { generateGame, verifyHeadless, pickTags } from './src/aigen.js';
 import { chat, extractJson, isUp, DEFAULT_MODEL } from './src/llm.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -354,15 +357,24 @@ function aiMakerTest() {
   for (const sym of ['TAG_GROUPS', 'SYSTEM_PROMPT', 'conflictsIn', 'randomTags'])
     assert(h.includes('const ' + sym) || h.includes('function ' + sym), `AI 제작기: ${sym} 누락`);
   assert(!/^export /m.test(h), 'AI 제작기: export 구문이 남아 브라우저에서 터진다');
+  const invariants = (t, why) => {
+    assert(conflictsIn(t).length === 0, `${why}: 충돌 조합이 나옴 — ${t.join(',')}`);
+    for (const g of TAG_GROUPS) {
+      const n = g.tags.filter((x) => t.includes(x)).length;
+      assert(n <= g.pick, `${why}: ${g.name} 이 최대 ${g.pick}개를 넘음`);
+      if (g.req) assert(n >= 1, `${why}: ${g.name} 은 필수인데 비었음`);
+    }
+  };
   for (let i = 0; i < 200; i++) {
     const t = randomTags();
     assert(t.length >= 2, '랜덤 태그가 너무 적음');
-    assert(conflictsIn(t).length === 0, '랜덤 태그가 충돌 조합을 냄: ' + t.join(','));
-    for (const g of TAG_GROUPS) {
-      const n = g.tags.filter((x) => t.includes(x)).length;
-      assert(n <= g.pick, `${g.name} 태그가 최대 ${g.pick}개를 넘음`);
-      if (g.req) assert(n >= 1, `${g.name} 은 필수인데 비었음`);
-    }
+    invariants(t, '랜덤 태그');
+
+    // CLI 선택기가 중간에 끊겼을 때 쓰는 보충 — 고른 건 지키고 빈 그룹만 채워야 한다
+    const seed = i % 3 === 0 ? ['2D'] : i % 3 === 1 ? ['퍼즐', '마우스만'] : [];
+    const f = fillRandom(seed);
+    invariants(f, '랜덤 보충');
+    for (const x of seed) assert(f.includes(x), `랜덤 보충이 고른 태그(${x})를 지웠음`);
   }
 }
 
@@ -483,8 +495,13 @@ const stop = () => {
 process.on('SIGINT', stop);
 
 // AI 모드: 엔진 없이 AI가 게임 코드를 통째로 쓴다. 만든 뒤 실제로 돌려보고 안 되면 오류를 물려 고치게 한다.
+// 태그를 안 주고 터미널에서 돌리면 브라우저 툴처럼 골라가며 만든다.
+// --random 이면 묻지 않고 굴리고, --pick 이면 파이프로 넣어도 물어본다.
+let chosenTags = aiTags.length ? aiTags : null;
+if (aiMode && !chosenTags && !has('--random') && (process.stdin.isTTY || has('--pick'))) chosenTags = await pickTags();
+
 while (aiMode && n < count) {
-  const tags = aiTags.length ? aiTags : randomTags();
+  const tags = chosenTags || randomTags();
   console.log(`\n[${n + 1}] ${tags.join(' · ')}`);
   const r = await generateGame({ tags, extra: aiExtra, model, log: (m) => console.log('   ' + m) });
   n++;

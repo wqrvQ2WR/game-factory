@@ -51,6 +51,24 @@ export function conflictsIn(tags) {
   return bad;
 }
 
+// 이미 고른 것은 두고 비어 있는 그룹만 랜덤으로 채운다. 그룹 정원과 충돌 규칙을 지킨다.
+export function fillRandom(picked, rndFn = Math.random) {
+  const out = [...new Set(picked)];
+  for (const g of TAG_GROUPS) {
+    const have = g.tags.filter((t) => out.includes(t));
+    if (have.length) continue;                    // 이 그룹은 이미 골랐다
+    if (!g.req && rndFn() < 0.3) continue;
+    const pool = g.tags.filter((t) => !conflictsIn([...out, t]).length);
+    if (!pool.length) continue;
+    const n = 1 + Math.floor(rndFn() * Math.min(g.pick, pool.length));
+    for (let i = 0; i < n && pool.length; i++) {
+      const t = pool.splice(Math.floor(rndFn() * pool.length), 1)[0];
+      if (!conflictsIn([...out, t]).length) out.push(t);
+    }
+  }
+  return out;
+}
+
 export function randomTags(rndFn = Math.random) {
   const out = [];
   for (const g of TAG_GROUPS) {

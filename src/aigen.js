@@ -1,7 +1,62 @@
 // AI가 쓴 게임을 Node에서 실제로 돌려보는 검증기 + 생성/수정 루프.
 // 브라우저 툴(out/aimaker.html)과 같은 프롬프트를 쓰되, 여기선 가짜 DOM 위에서 돌린다.
-import { SYSTEM_PROMPT } from './tags.js';
+import readline from 'node:readline/promises';
+import { SYSTEM_PROMPT, TAG_GROUPS, conflictsIn, randomTags, fillRandom } from './tags.js';
 import { chat } from './llm.js';
+
+const C = { dim: '\x1b[2m', b: '\x1b[1m', hi: '\x1b[38;5;111m', ok: '\x1b[38;5;114m', no: '\x1b[38;5;210m', r: '\x1b[0m' };
+
+// 터미널에서 태그를 골라가며 만들기. 브라우저 툴과 같은 태그 체계를 쓴다.
+export async function pickTags({ input = process.stdin, output = process.stdout } = {}) {
+  const rl = readline.createInterface({ input, output });
+  const picked = [];
+  // 입력이 끊기면(EOF·Ctrl+D·파이프 종료) question 이 영영 안 끝난다. 그땐 랜덤으로 넘어간다.
+  const ac = new AbortController();
+  let ended = false;
+  rl.on('close', () => { ended = true; ac.abort(); });
+  const ask = async (q) => {
+    if (ended) return null;
+    try { return await rl.question(q, { signal: ac.signal }); }
+    catch { return null; }
+  };
+  console.log(`\n${C.b}태그 고르기${C.r} ${C.dim}— 번호를 쉼표로 (엔터=건너뛰기, r=이 항목 랜덤, q=전부 랜덤)${C.r}`);
+  try {
+    for (const g of TAG_GROUPS) {
+      const head = `${C.hi}${g.name}${C.r} ${C.dim}${g.req ? '필수' : '선택'} · 최대 ${g.pick}${C.r}`;
+      const list = g.tags.map((t, i) => `${C.dim}${String(i + 1).padStart(2)})${C.r} ${t}`);
+      console.log(`\n${head}`);
+      for (let i = 0; i < list.length; i += 3) console.log('  ' + list.slice(i, i + 3).map((x) => x.padEnd(34)).join(''));
+
+      for (;;) {
+        const raw = await ask('> ');
+        if (raw === null) {                        // 입력이 끊겼다
+          console.log(`${C.dim}입력이 끊겨 나머지는 랜덤으로 채웁니다${C.r}`);
+          rl.close();
+          return fillRandom(picked);           // 고른 건 두고 빈 그룹만 채운다
+        }
+        const ans = raw.trim().toLowerCase();
+        if (ans === 'q') { rl.close(); return randomTags(); }
+        if (ans === 'r') { picked.push(...shuffle(g.tags).slice(0, 1)); break; }
+        if (!ans) {
+          if (!g.req) break;
+          console.log(`${C.no}필수 항목입니다. 하나는 골라주세요.${C.r}`);
+          continue;
+        }
+        const idx = ans.split(/[,\s]+/).map((x) => parseInt(x, 10) - 1).filter((i) => i >= 0 && i < g.tags.length);
+        if (!idx.length) { console.log(`${C.no}번호를 다시 입력하세요.${C.r}`); continue; }
+        if (idx.length > g.pick) { console.log(`${C.no}최대 ${g.pick}개까지입니다.${C.r}`); continue; }
+        const chosen = [...new Set(idx)].map((i) => g.tags[i]);
+        const bad = conflictsIn([...picked, ...chosen]);
+        if (bad.length) { console.log(`${C.no}서로 안 맞는 조합: ${bad.join(', ')}${C.r}`); continue; }
+        picked.push(...chosen);
+        break;
+      }
+    }
+  } finally { rl.close(); }
+  return picked;
+}
+
+const shuffle = (a) => a.slice().sort(() => Math.random() - 0.5);
 
 export function buildMessages(tags, extra = '') {
   return [
