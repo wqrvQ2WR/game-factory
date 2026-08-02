@@ -10,6 +10,8 @@ import { makeRng, newSeed, hashStr } from './src/rng.js';
 import { makePalette } from './src/palette.js';
 import { proceduralConcept, THEMES } from './src/naming.js';
 import { FAMILIES, FAMILY_KEYS } from './src/families.js';
+import { TAG_GROUPS, randomTags, conflictsIn } from './src/tags.js';
+import { generateGame, verifyHeadless } from './src/aigen.js';
 import { chat, extractJson, isUp, DEFAULT_MODEL } from './src/llm.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -167,6 +169,7 @@ h2{font-size:19px;margin:0}.sub{margin:2px 0 0;font-size:12px;color:var(--ac);le
 ${fs.existsSync(path.join(OUT, 'arcade.html')) ? '<a href="./arcade.html"><b>아케이드 ▶</b>매 스테이지 새 게임이 나오는 로그라이트 런</a>' : ''}
 ${fs.existsSync(path.join(OUT, 'showcase.html')) ? '<a href="./showcase.html"><b>무저갱 ▶</b>손으로 다듬은 단독 출시본</a>' : ''}
 ${fs.existsSync(path.join(OUT, 'maker.html')) ? '<a href="./maker.html"><b>제작기 ▶</b>직접 굴려서 내 게임 만들기</a>' : ''}
+${fs.existsSync(path.join(OUT, 'aimaker.html')) ? '<a href="./aimaker.html"><b>AI 제작기 ▶</b>태그만 고르면 AI가 코드를 직접 씀</a>' : ''}
 </div><div class="grid">${cards}</div>`);
 }
 
@@ -226,6 +229,18 @@ function buildMaker() {
   return 'out/maker.html';
 }
 
+// ---------- AI 제작기 ----------
+// 파라미터 공장과 다른 갈래. 엔진이 없고, 태그 조합을 프롬프트로 넘겨 AI가 게임 코드를 통째로 쓴다.
+// 브라우저에서 omniroute를 직접 부르고, 만든 걸 iframe에 띄워 실제로 돌려본 뒤 안 되면 오류를 물려 고치게 한다.
+function buildAiMaker(omniroute = 'http://127.0.0.1:20128/v1') {
+  const src = stripExports(fs.readFileSync(path.join(ROOT, 'src', 'tags.js'), 'utf8'));
+  const tpl = fs.readFileSync(path.join(ROOT, 'templates', 'aimaker.html'), 'utf8');
+  fs.mkdirSync(OUT, { recursive: true });
+  fs.writeFileSync(path.join(OUT, 'aimaker.html'),
+    tpl.replace('__TAGS__', src).replace('__OMNIROUTE__', omniroute.replace(/\/$/, '')));
+  return 'out/aimaker.html';
+}
+
 // ---------- 아케이드 (메타게임) ----------
 function writeArcade(games) {
   const tpl = fs.readFileSync(path.join(ROOT, 'templates', 'arcade.html'), 'utf8');
@@ -271,6 +286,7 @@ function selftest() {
   for (const fam of FAMILY_KEYS) simTest(fam);
   idleBalanceTest();
   makerTest();
+  aiMakerTest();
   showcaseTest();
   determinismTest();
   console.log('셀프테스트 통과 ✓ (' + FAMILY_KEYS.join(', ') + ', 결정론)');
@@ -328,6 +344,26 @@ function simTest(family) {
   assert(p.t > 1, `${family}: 시뮬이 진행되지 않음`);
   assert(isFinite(p.score) && p.score >= 0, `${family}: 점수 비정상 (${p.score})`);
   if (family === 'arena') assert(p.state === 'over' && +p.store['gf:sim:best'] > 0, 'arena: 사망→점수기록 경로가 끊김');
+}
+
+// AI 제작기는 태그 체계를 페이지에 인라인한다. 치환과 충돌 규칙이 살아 있는지 본다.
+function aiMakerTest() {
+  buildAiMaker('http://127.0.0.1:20128/v1');
+  const h = fs.readFileSync(path.join(ROOT, 'out', 'aimaker.html'), 'utf8');
+  assert(!h.includes('__TAGS__') && !h.includes('__OMNIROUTE__'), 'AI 제작기: 템플릿 치환이 안 됨');
+  for (const sym of ['TAG_GROUPS', 'SYSTEM_PROMPT', 'conflictsIn', 'randomTags'])
+    assert(h.includes('const ' + sym) || h.includes('function ' + sym), `AI 제작기: ${sym} 누락`);
+  assert(!/^export /m.test(h), 'AI 제작기: export 구문이 남아 브라우저에서 터진다');
+  for (let i = 0; i < 200; i++) {
+    const t = randomTags();
+    assert(t.length >= 2, '랜덤 태그가 너무 적음');
+    assert(conflictsIn(t).length === 0, '랜덤 태그가 충돌 조합을 냄: ' + t.join(','));
+    for (const g of TAG_GROUPS) {
+      const n = g.tags.filter((x) => t.includes(x)).length;
+      assert(n <= g.pick, `${g.name} 태그가 최대 ${g.pick}개를 넘음`);
+      if (g.req) assert(n >= 1, `${g.name} 은 필수인데 비었음`);
+    }
+  }
 }
 
 // 방치형은 복리라 가격 곡선이 조금만 어긋나도 점수가 10^18까지 터진다(실제로 그랬다).
@@ -406,6 +442,12 @@ const has = (f) => argv.includes(f);
 const val = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
 
 if (has('--selftest')) { selftest(); process.exit(0); }
+if (has('--aimaker')) {
+  const url = val('--omniroute', process.env.OMNIROUTE_BASE_URL || 'http://127.0.0.1:20128/v1');
+  console.log('AI 제작기: ' + buildAiMaker(url) + `  (omniroute ${url})`);
+  console.log('  태그를 고르면 AI가 게임 코드를 직접 쓰고, 자동으로 돌려본 뒤 실패하면 고칩니다.');
+  process.exit(0);
+}
 if (has('--maker')) { console.log('제작기: ' + buildMaker() + ' — 브라우저에서 직접 굴려 만들고 내려받기'); process.exit(0); }
 if (has('--showcase')) { console.log('쇼케이스: ' + buildShowcase() + ' — 무저갱 / ABYSS RUNNER (난이도 3종, 구간 진행, 게이트 러시)'); process.exit(0); }
 
@@ -419,6 +461,9 @@ const mpIdx = argv.indexOf('--mp');
 const mpNext = mpIdx >= 0 ? argv[mpIdx + 1] : null;
 const mp = mpIdx < 0 ? null : (mpNext && /^https?:\/\//.test(mpNext) ? mpNext : 'http://localhost:24566');
 const arcade = has('--arcade');
+const aiMode = has('--ai');
+const aiTags = (val('--tags', '') || '').split(',').map((x) => x.trim()).filter(Boolean);
+const aiExtra = val('--extra', '');
 const delay = parseFloat(val('--delay', '0')) * 1000;
 if (family && !FAMILIES[family]) { console.error(`--family 는 ${FAMILY_KEYS.join('|')} 중 하나`); process.exit(1); }
 
@@ -436,6 +481,32 @@ const stop = () => {
   process.exit(0);
 };
 process.on('SIGINT', stop);
+
+// AI 모드: 엔진 없이 AI가 게임 코드를 통째로 쓴다. 만든 뒤 실제로 돌려보고 안 되면 오류를 물려 고치게 한다.
+while (aiMode && n < count) {
+  const tags = aiTags.length ? aiTags : randomTags();
+  console.log(`\n[${n + 1}] ${tags.join(' · ')}`);
+  const r = await generateGame({ tags, extra: aiExtra, model, log: (m) => console.log('   ' + m) });
+  n++;
+  if (!r.html) { console.log(`   ✗ ${r.attempts}번 시도 실패 — ${r.trail[r.trail.length - 1]}`); continue; }
+  const title = (r.html.match(/<title>([^<]*)<\/title>/i)?.[1] || 'AI 게임').trim();
+  const file = `ai-${slug(title)}-${Date.now().toString(36).slice(-5)}.html`;
+  fs.mkdirSync(OUT, { recursive: true });
+  fs.writeFileSync(path.join(OUT, file), r.html);
+  const games = readDb();
+  games.push({
+    file, seed: 'ai', family: 'ai', famKo: 'AI 생성', title,
+    subtitle: r.model, tagline: '태그만 주고 AI가 코드를 직접 씀',
+    mech: tags.join(', '), tags: [`시도 ${r.attempts}회`, ...tags.slice(0, 4)],
+    at: new Date().toISOString(), source: 'ai:' + r.model,
+    bg: '#12131a', fg: '#e9e9f2', ac: '#7c8cff', player: '#7c8cff', enemy: '#ff7a86', pickup: '#6ee7a5',
+  });
+  fs.writeFileSync(dbPath(), JSON.stringify(games, null, 1));
+  updateGallery();
+  console.log(`   ✓ ${title} → out/${file} (시도 ${r.attempts}회)`);
+  if (has('--open') && n === 1) execFile('open', [path.join(OUT, file)]);
+}
+if (aiMode) stop();
 
 while (n < count) {
   const seed = fixedSeed && n === 0 ? fixedSeed : newSeed();

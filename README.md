@@ -15,6 +15,9 @@ node factory.js 5 --mp               # 온라인 1:1 대전 게임으로 생성
 node factory.js 12 --arcade          # 아케이드(메타게임) 한 벌 + out/arcade.html
 node factory.js --showcase           # 손으로 다듬은 단독 출시본 out/showcase.html
 node factory.js --maker              # 직접 만드는 제작기 out/maker.html
+node factory.js --aimaker            # AI 제작기 out/aimaker.html (태그 → AI가 코드를 직접 씀)
+node factory.js 3 --ai               # 같은 걸 CLI로 배치 생성
+node factory.js --ai --tags "2D,퍼즐,마우스만"
 node factory.js 1 --open     # 만들고 바로 열기
 node factory.js --selftest   # 자체 점검
 ```
@@ -28,6 +31,7 @@ node factory.js --selftest   # 자체 점검
 - `out/arcade.html` — 아케이드: 뽑힌 게임들을 스테이지로 엮은 로그라이트 런
 - `out/showcase.html` — 무저갱: 공장 결과물 하나를 손으로 다듬은 단독 출시본
 - `out/maker.html` — 제작기: 브라우저에서 직접 굴려 만들고 내려받기
+- `out/aimaker.html` — AI 제작기: 태그만 고르면 AI가 게임 코드를 직접 씀
 - `out/games.json` — 생산 대장
 
 ## 구조
@@ -105,6 +109,35 @@ node factory.js 12 --arcade   # 게임 12개 + out/arcade.html
 - 목표 점수는 각 계열이 자기 채점식으로 추정한다 (`FAMILIES[x].est`)
 - 메타게임은 게임을 iframe으로 띄우고 결과를 `postMessage` 로 받는다
 - 강화는 **쿼리로만** 전달한다 (`?lives=2&time=30&targetMul=0.9`) — 게임 파일 자체는 손대지 않는다
+
+## AI 제작기 — 태그만 주고 AI가 코드를 쓴다
+
+지금까지의 공장은 **엔진이 있고 파라미터만 바뀌는** 방식이다. 이건 반대다 — 엔진이 없고 매번 새 코드가 나온다.
+
+```bash
+node factory.js --aimaker     # 브라우저 툴 (out/aimaker.html)
+node factory.js 3 --ai        # CLI로 3개 배치 생성
+node factory.js --ai --tags "2D,퍼즐,고정 화면,사이버펑크,스테이지,마우스만"
+```
+
+태그는 7갈래 (`src/tags.js`): 차원 · 장르 · 시점 · 소재 · 진행 · 조작 · 맛.
+`2D / 의사 3D / 아이소메트릭 / 와이어프레임 3D` × `액션·퍼즐·슈팅·리듬·레이싱·플랫포머·전략·타워디펜스·방치형…`
+서로 안 맞는 조합(마우스만 + 키보드 방향키, 방치형 + 액션 …)은 고르는 단계에서 경고한다.
+
+### 핵심은 "만든 걸 실제로 돌려본다"
+
+AI가 쓴 게임은 그냥 두면 상당수가 안 굴러간다. 그래서 **생성 → 검증 → 오류를 물려 수정**을 최대 3번 돈다.
+
+검사 항목: `<script>`가 잘리지 않았나 · 외부 리소스를 쓰지 않나 · 로드하다 예외가 나나 ·
+`requestAnimationFrame` 루프가 도나 · 타이틀 화면에 뭔가 그려지나 ·
+키보드/마우스를 넣었을 때 **그리는 내용이 실제로 달라지나**(게임이 시작되나).
+
+실패하면 그 사유를 그대로 AI에게 돌려준다 — "그 파일을 돌렸더니 이렇게 실패했다: …".
+
+- 브라우저 툴은 iframe에 띄워 **진짜 브라우저에서** 검증한다 (픽셀까지 비교).
+  탭이 숨겨지면 브라우저가 rAF를 멈춰 멀쩡한 게임도 실패로 보이므로, 보이는 동안만 시간을 센다.
+- CLI는 가짜 DOM 위에서 돌린다 (`src/aigen.js`). 캔버스 호출을 기록해
+  입력 전후로 **그리는 내용의 집합이 얼마나 겹치는지**로 반응 여부를 판정한다.
 
 ## 제작기 — 직접 만들기
 
