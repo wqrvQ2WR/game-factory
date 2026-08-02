@@ -14,6 +14,21 @@ export const THEMES = [
   { key: 'machine', ko: '기계', words: ['톱니', '증기', '태엽', '용광로', '배관', '과부하'], en: ['Cogwork', 'Steam', 'Boiler', 'Overload'], hue: 45 },
   { key: 'storm', ko: '폭풍', words: ['번개', '뇌운', '정전기', '태풍', '방전', '천둥'], en: ['Volt', 'Tempest', 'Static', 'Surge'], hue: 220 },
   { key: 'bio', ko: '생체', words: ['세포', '점액', '변이', '촉수', '증식', '항체'], en: ['Cell', 'Mutant', 'Slime', 'Vector'], hue: 100 },
+  // 아래는 '소재별 장르'를 테마로 흡수한 것들 — 규칙이 아니라 배경/분위기를 가른다
+  { key: 'military', ko: '밀리터리', words: ['참호', '보급', '포탄', '전선', '위장', '작전'], en: ['Trench', 'Recon', 'Salvo', 'Frontline'], hue: 90 },
+  { key: 'vampire', ko: '뱀파이어', words: ['혈족', '관', '박쥐', '초대', '갈증', '성혈'], en: ['Sanguine', 'Crypt', 'Thirst', 'Nocturne'], hue: 350 },
+  { key: 'xianxia', ko: '선협', words: ['단전', '검기', '연단', '천겁', '내공', '선인'], en: ['Cultivation', 'Qi', 'Ascension', 'Immortal'], hue: 165 },
+  { key: 'oriental', ko: '동양풍', words: ['묵향', '단청', '기와', '부적', '풍경', '구미호'], en: ['Ink', 'Lantern', 'Talisman', 'Ninetails'], hue: 15 },
+  { key: 'history', ko: '역사', words: ['연대', '왕조', '유물', '비문', '기록', '고분'], en: ['Dynasty', 'Relic', 'Chronicle', 'Epitaph'], hue: 40 },
+  { key: 'disaster', ko: '재난', words: ['경보', '붕괴', '해일', '진앙', '대피', '여진'], en: ['Aftershock', 'Collapse', 'Siren', 'Evacuate'], hue: 25 },
+  { key: 'hero', ko: '슈퍼히어로', words: ['망토', '초능', '각성', '시민', '숙적', '섬광'], en: ['Cape', 'Awaken', 'Nemesis', 'Beacon'], hue: 215 },
+  { key: 'healing', ko: '힐링', words: ['햇살', '온실', '뜨개', '수프', '오후', '숨결'], en: ['Sunlit', 'Cozy', 'Simmer', 'Breeze'], hue: 55 },
+  { key: 'aviation', ko: '항공', words: ['활주로', '고도', '실속', '난기류', '편대', '관제'], en: ['Runway', 'Altitude', 'Squadron', 'Vector'], hue: 205 },
+  { key: 'crime', ko: '수사', words: ['단서', '알리바이', '증거', '심문', '미제', '잠복'], en: ['Alibi', 'Evidence', 'Coldcase', 'Stakeout'], hue: 240 },
+  { key: 'mecha', ko: '거대로봇', words: ['격납고', '출격', '장갑', '관절', '동력로', '탑승'], en: ['Hangar', 'Sortie', 'Armature', 'Reactor'], hue: 195 },
+  { key: 'survival', ko: '서바이벌', words: ['배급', '체온', '모닥불', '식수', '은신', '겨울나기'], en: ['Ration', 'Shelter', 'Frostbite', 'Forage'], hue: 75 },
+  { key: 'retro', ko: '고전', words: ['오락실', '동전', '스캔라인', '카트리지', '8비트', '하이스코어'], en: ['Arcade', 'Coin-Op', 'Scanline', 'Highscore'], hue: 310 },
+  { key: 'factory', ko: '공장', words: ['컨베이어', '적재', '수율', '라인', '가동률', '생산량'], en: ['Conveyor', 'Throughput', 'Assembly', 'Yield'], hue: 50 },
 ];
 
 export const NOUNS_KO = ['소용돌이', '프로토콜', '표류기', '광시곡', '주기', '연대기', '실험', '역설', '난기류', '수집가', '심판', '유령', '기하학', '전조', '대탈출', '기관', '회로', '방주', '균열', '심장'];

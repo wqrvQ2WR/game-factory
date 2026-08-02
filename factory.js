@@ -95,6 +95,8 @@ async function makeGame({ seed = newSeed(), useAi = true, model = DEFAULT_MODEL,
       concept.error = e.message;
     }
   }
+  FAMILIES[fam].derive?.(params);   // 제작기뿐 아니라 공장 생성물도 같은 보정을 거친다
+
   // 온라인 대전은 반드시 끝나야 승패가 갈린다 — 무제한이면 제한시간을 붙인다
   if (mp && !params.timeLimit) { params.timeLimit = 60; params.timeUpMsg = '종료'; }
 
@@ -110,7 +112,22 @@ async function makeGame({ seed = newSeed(), useAi = true, model = DEFAULT_MODEL,
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(path.join(OUT, file), buildHtml(cfg));
   const mech = F.mech(params).concat(mp ? [`온라인 1:1 (같은 시드·같은 맵, ${params.timeLimit}초 점수 대결)`] : []).join(', ');
-  return { file, cfg, source: concept.source, error: concept.error, mech, famKo: F.ko, target: cfg.arcade?.target };
+  return { file, cfg, source: concept.source, error: concept.error, mech, famKo: F.ko, tags: tagsOf(params, cfg), target: cfg.arcade?.target };
+}
+
+// 진행 방식 계열 장르(하드코어·끝없는·경쟁 …)는 새 엔진이 아니라 파라미터에서 읽어내는 꼬리표다.
+function tagsOf(p, cfg) {
+  const t = [];
+  if (p.lives === 1) t.push('하드코어');
+  t.push(p.timeLimit ? `${p.timeLimit}초` : '끝없는');
+  if (p.combo) t.push('콤보');
+  if (p.rival) t.push('경쟁');
+  if (p.shrink) t.push('압박');
+  if (p.darkness) t.push('시야제한');
+  if (p.wrap) t.push('화면순환');
+  if (cfg.mp) t.push('온라인 1:1');
+  if (cfg.arcade) t.push('아케이드');
+  return t;
 }
 
 // ---------- 갤러리 ----------
@@ -124,7 +141,8 @@ export function updateGallery() {
   const cards = games.slice().reverse().map((g) => `<a class="card" href="./${encodeURIComponent(g.file)}" style="--bg:${g.bg};--fg:${g.fg};--ac:${g.ac}">
   <div class="top"><div class="sw"><i style="background:${g.player}"></i><i style="background:${g.enemy}"></i><i style="background:${g.pickup}"></i></div><span class="fam">${esc(g.famKo || '')}${g.mp ? ' · 온라인' : ''}</span></div>
   <h2>${esc(g.title)}</h2><p class="sub">${esc(g.subtitle)}</p><p class="tag">${esc(g.tagline)}</p>
-  <p class="mech">${esc(g.mech)}</p></a>`).join('\n');
+  <p class="mech">${esc(g.mech)}</p>
+  <p class="tags">${(g.tags || []).map((x) => `<i>${esc(x)}</i>`).join('')}</p></a>`).join('\n');
   fs.writeFileSync(path.join(OUT, 'index.html'), `<!doctype html><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>게임 공장 — ${games.length}개</title>
 <style>
@@ -138,6 +156,8 @@ h1{font-size:22px;margin:0 0 4px}.count{color:#7c7f93;margin:0 0 28px}
 .fam{font-size:11px;opacity:.6;border:1px solid currentColor;border-radius:99px;padding:1px 8px}
 h2{font-size:19px;margin:0}.sub{margin:2px 0 0;font-size:12px;color:var(--ac);letter-spacing:.04em}
 .tag{margin:8px 0 0;font-size:13px;opacity:.8}.mech{margin:8px 0 0;font-size:11px;opacity:.5;line-height:1.4}
+.tags{margin:10px 0 0;display:flex;flex-wrap:wrap;gap:4px}
+.tags i{font-style:normal;font-size:10px;opacity:.75;border:1px solid currentColor;border-radius:99px;padding:0 7px}
 .links{display:flex;gap:10px;margin:0 0 24px}
 .links a{display:block;padding:10px 16px;border-radius:11px;background:#171922;border:1px solid #ffffff1a;color:#e8e8ef;text-decoration:none;font-size:13px}
 .links a b{display:block;font-size:15px;margin-bottom:2px}
@@ -153,7 +173,7 @@ ${fs.existsSync(path.join(OUT, 'maker.html')) ? '<a href="./maker.html"><b>제�
 function record(g) {
   const games = readDb(), c = g.cfg;
   games.push({
-    file: g.file, seed: c.seed, family: c.family, famKo: g.famKo, mp: !!c.mp,
+    file: g.file, seed: c.seed, family: c.family, famKo: g.famKo, mp: !!c.mp, tags: g.tags,
     title: c.title, subtitle: c.subtitle, tagline: c.tagline,
     mech: g.mech, at: new Date().toISOString(), source: g.source,
     bg: c.palette.bg, fg: c.palette.text, ac: c.palette.accent,
@@ -249,6 +269,7 @@ function selftest() {
   assert(before !== undefined, 'bpm 파라미터 사라짐');
 
   for (const fam of FAMILY_KEYS) simTest(fam);
+  idleBalanceTest();
   makerTest();
   showcaseTest();
   determinismTest();
@@ -307,6 +328,24 @@ function simTest(family) {
   assert(p.t > 1, `${family}: 시뮬이 진행되지 않음`);
   assert(isFinite(p.score) && p.score >= 0, `${family}: 점수 비정상 (${p.score})`);
   if (family === 'arena') assert(p.state === 'over' && +p.store['gf:sim:best'] > 0, 'arena: 사망→점수기록 경로가 끊김');
+}
+
+// 방치형은 복리라 가격 곡선이 조금만 어긋나도 점수가 10^18까지 터진다(실제로 그랬다).
+// 사람이 할 만한 속도로 한 판 끝까지 돌려 점수가 상식적인 범위인지 본다.
+function idleBalanceTest() {
+  const bot = (i, g, noop) => {
+    if (i % 15 === 0) g.onkeydown({ code: 'Space', preventDefault: noop });
+    if (i % 15 === 7) g.onkeyup({ code: 'Space' });
+    if (i % 120 === 0) for (const d of ['Digit1', 'Digit2', 'Digit3', 'Digit4']) g.onkeydown({ code: d, preventDefault: noop });
+    if (i % 120 === 6) for (const d of ['Digit1', 'Digit2', 'Digit3', 'Digit4']) g.onkeyup({ code: d });
+  };
+  for (const seed of ['bal1', 'bal2', 'bal3']) {
+    const p = FAMILIES.idle.params(makeRng(seed));
+    FAMILIES.idle.derive(p);
+    const r = runSim('idle', p, { script: bot, frames: 60 * (p.timeLimit + 3), id: '4242' });
+    assert(r.score > 500, `방치형 ${seed}: ${p.timeLimit}초를 돌려도 ${Math.round(r.score)}점 — 경제가 굴러가지 않는다`);
+    assert(r.score < 5e7, `방치형 ${seed}: ${r.score.toExponential(1)}점 — 가격 곡선이 생산량을 못 따라가 복리가 터졌다`);
+  }
 }
 
 // 제작기는 공장 소스를 통째로 인라인한다 — export 떼고도 문법이 맞고 필요한 심볼이 다 있는지 본다.

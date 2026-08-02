@@ -328,6 +328,218 @@ export const FAMILIES = {
       return s;
     },
   },
+  // ---------- 뱀 ----------
+  snake: {
+    ko: '뱀',
+    params(rnd) {
+      return {
+        ...common(rnd),
+        cell: rnd.pick([24, 30, 30, 40]),
+        tickRate: +rnd.float(5, 13).toFixed(2),
+        speedUp: +rnd.float(0, 0.03).toFixed(4),
+        startLen: rnd.range(3, 6),
+        growth: rnd.range(1, 4),
+        wrap: rnd.chance(0.4),
+        walls: rnd.chance(0.55) ? rnd.range(4, 40) : 0,
+        foodScore: rnd.range(20, 80),
+        foodSides: rnd.range(3, 8),
+        survivalScore: rnd.chance(0.5) ? rnd.range(1, 6) : 0,
+        lives: rnd.range(1, 4),
+        timeLimit: rnd.chance(0.25) ? rnd.pick([60, 90]) : 0,
+      };
+    },
+    howto() { return '이동: WASD / 방향키   ·   진행 방향으로 계속 나아간다'; },
+    knobs: [
+      { k: 'cell', n: '칸 크기', min: 16, max: 60, step: 2 },
+      { k: 'tickRate', n: '초당 이동 칸', min: 2, max: 20, step: 0.5 },
+      { k: 'speedUp', n: '먹을수록 가속', min: 0, max: 0.08, step: 0.002 },
+      { k: 'startLen', n: '시작 길이', min: 2, max: 12, step: 1 },
+      { k: 'growth', n: '먹을 때 성장', min: 1, max: 8, step: 1 },
+      { k: 'walls', n: '장애물 수', min: 0, max: 80, step: 1 },
+      { k: 'foodScore', n: '먹이 점수', min: 5, max: 200, step: 5 },
+      { k: 'lives', n: '목숨', min: 1, max: 9, step: 1 },
+      { k: 'timeLimit', n: '제한시간(0=무제한)', min: 0, max: 180, step: 5 },
+      { k: 'wrap', n: '화면 순환', type: 'bool' },
+      { k: 'combo', n: '콤보 배수', type: 'bool' },
+    ],
+    derive(p) {
+      const cols = Math.floor(960 / p.cell), rows = Math.floor(600 / p.cell);
+      p.startLen = Math.min(p.startLen, Math.max(2, cols - 4));       // 시작부터 벽에 박히지 않게
+      p.walls = Math.min(p.walls, Math.floor(cols * rows * 0.15));    // 길이 막히지 않게
+    },
+    est(p) {
+      const T = p.timeLimit || 45;
+      return Math.round(T * (p.tickRate / 14 * p.foodScore + p.survivalScore));
+    },
+    mech(p) {
+      const s = ['격자 위를 계속 전진', `초당 ${p.tickRate}칸`];
+      if (p.wrap) s.push('화면 순환');
+      if (p.walls) s.push(`장애물 ${p.walls}개`);
+      if (p.speedUp > 0.012) s.push('먹을수록 빨라짐');
+      return s;
+    },
+  },
+
+  // ---------- 벽돌깨기 ----------
+  breakout: {
+    ko: '벽돌깨기',
+    params(rnd) {
+      return {
+        ...common(rnd),
+        paddleW: rnd.range(90, 200), paddleSpeed: rnd.range(400, 800),
+        ballSpeed: rnd.range(260, 460), ballR: rnd.range(6, 10),
+        rows: rnd.range(3, 7), cols: rnd.range(8, 14),
+        maxHp: rnd.range(1, 3),
+        gaps: rnd.chance(0.5) ? +rnd.float(0.05, 0.25).toFixed(2) : 0,
+        spread: +rnd.float(0.9, 1.25).toFixed(2),
+        brickScore: rnd.range(15, 60),
+        waveScore: rnd.range(200, 600),
+        waveSpeed: +rnd.float(0.06, 0.16).toFixed(3),
+        survivalScore: rnd.chance(0.4) ? rnd.range(1, 4) : 0,
+        lives: rnd.range(2, 5),
+        timeLimit: rnd.chance(0.2) ? 90 : 0,
+      };
+    },
+    howto() { return '패들: A / D 또는 마우스   ·   발사: Space / 클릭'; },
+    knobs: [
+      { k: 'paddleW', n: '패들 너비', min: 50, max: 300, step: 5 },
+      { k: 'paddleSpeed', n: '패들 속도', min: 200, max: 1200, step: 20 },
+      { k: 'ballSpeed', n: '공 속도', min: 150, max: 700, step: 10 },
+      { k: 'ballR', n: '공 크기', min: 4, max: 16, step: 1 },
+      { k: 'rows', n: '벽돌 줄', min: 1, max: 10, step: 1 },
+      { k: 'cols', n: '벽돌 칸', min: 4, max: 20, step: 1 },
+      { k: 'maxHp', n: '최대 내구도', min: 1, max: 6, step: 1 },
+      { k: 'gaps', n: '빈칸 비율', min: 0, max: 0.5, step: 0.01 },
+      { k: 'spread', n: '반사 각도폭', min: 0.4, max: 1.4, step: 0.05 },
+      { k: 'waveSpeed', n: '판당 가속', min: 0, max: 0.3, step: 0.01 },
+      { k: 'brickScore', n: '벽돌 점수', min: 5, max: 150, step: 5 },
+      { k: 'lives', n: '목숨', min: 1, max: 9, step: 1 },
+      { k: 'timeLimit', n: '제한시간(0=무제한)', min: 0, max: 180, step: 5 },
+      { k: 'combo', n: '콤보 배수', type: 'bool' },
+    ],
+    derive(p) {
+      p.rows = Math.max(1, Math.round(p.rows));
+      p.cols = Math.max(4, Math.round(p.cols));
+      if (p.gaps > 0.45) p.gaps = 0.45;              // 다 비면 깰 벽돌이 없다
+      if (p.paddleW < p.ballR * 4) p.paddleW = p.ballR * 4;
+    },
+    est(p) {
+      const T = p.timeLimit || 60;
+      const perWave = p.rows * p.cols * (1 - p.gaps) * p.brickScore * ((1 + p.maxHp) / 2);
+      return Math.round(perWave * 1.3 + p.waveScore + T * p.survivalScore);
+    },
+    mech(p) {
+      const s = [`${p.rows}줄 × ${p.cols}칸`];
+      if (p.maxHp > 1) s.push(`내구도 최대 ${p.maxHp}`);
+      if (p.gaps) s.push('빈칸 있는 배치');
+      s.push('판을 깰수록 빨라지고 패들이 좁아짐');
+      return s;
+    },
+  },
+
+  // ---------- 탄막 ----------
+  danmaku: {
+    ko: '탄막',
+    params(rnd) {
+      return {
+        ...common(rnd),
+        playerSpeed: rnd.range(200, 340), focusMul: +rnd.float(0.35, 0.55).toFixed(2),
+        hitR: rnd.range(3, 5), grazeR: rnd.range(26, 48),
+        bulletSpeed: rnd.range(90, 210), bulletR: rnd.range(4, 7), bulletMax: rnd.range(400, 800),
+        foeRate: +rnd.float(0.2, 0.6).toFixed(2), foeMax: rnd.range(3, 7), foeHp: rnd.range(6, 24),
+        emitEvery: +rnd.float(0.35, 1.1).toFixed(2),
+        ringCount: rnd.range(6, 18), arms: rnd.range(2, 5),
+        spin: +rnd.float(0.15, 0.5).toFixed(2), fan: +rnd.float(0.6, 1.6).toFixed(2),
+        fireRate: +rnd.float(0.07, 0.14).toFixed(3), shotSpeed: rnd.range(700, 1000),
+        foeScore: rnd.range(200, 600), grazeScore: rnd.range(8, 25),
+        survivalScore: rnd.range(3, 10),
+        lives: rnd.range(2, 5),
+        timeLimit: rnd.chance(0.3) ? rnd.pick([60, 90]) : 0,
+      };
+    },
+    howto() { return '이동: WASD / 방향키 / 드래그   ·   Shift: 집중(저속·판정점 표시)   ·   사격은 자동'; },
+    knobs: [
+      { k: 'playerSpeed', n: '이동 속도', min: 120, max: 500, step: 10 },
+      { k: 'focusMul', n: '집중 시 배율', min: 0.2, max: 0.9, step: 0.05 },
+      { k: 'hitR', n: '판정점 크기', min: 1, max: 12, step: 1 },
+      { k: 'grazeR', n: '스치기 반경', min: 10, max: 80, step: 2 },
+      { k: 'bulletSpeed', n: '탄 속도', min: 40, max: 400, step: 5 },
+      { k: 'bulletR', n: '탄 크기', min: 2, max: 14, step: 1 },
+      { k: 'emitEvery', n: '발사 간격', min: 0.15, max: 2, step: 0.05 },
+      { k: 'ringCount', n: '한 번에 쏘는 수', min: 3, max: 36, step: 1 },
+      { k: 'spin', n: '패턴 회전', min: 0, max: 1.2, step: 0.05 },
+      { k: 'foeRate', n: '적 등장', min: 0.05, max: 1.5, step: 0.05 },
+      { k: 'foeMax', n: '동시 적 수', min: 1, max: 12, step: 1 },
+      { k: 'foeHp', n: '적 체력', min: 2, max: 60, step: 1 },
+      { k: 'grazeScore', n: '스치기 점수', min: 0, max: 80, step: 1 },
+      { k: 'lives', n: '목숨', min: 1, max: 9, step: 1 },
+      { k: 'timeLimit', n: '제한시간(0=무제한)', min: 0, max: 180, step: 5 },
+      { k: 'combo', n: '콤보 배수', type: 'bool' },
+    ],
+    derive(p) {
+      if (p.grazeR < p.hitR + 12) p.grazeR = p.hitR + 12;   // 스치기가 판정점보다 좁으면 의미가 없다
+      p.bulletMax = Math.max(200, Math.min(1200, p.bulletMax));
+      p.ringCount = Math.max(2, Math.round(p.ringCount));
+    },
+    est(p) {
+      const T = p.timeLimit || 45;
+      return Math.round(T * (p.foeRate * p.foeScore * 0.5 + p.grazeScore * 2.5 + p.survivalScore));
+    },
+    mech(p) {
+      const s = ['작은 판정점 + 화면을 덮는 탄', '링·나선·조준·부채 4패턴'];
+      s.push(`스치면 +${p.grazeScore}`);
+      if (p.bulletSpeed < 130) s.push('저속 고밀도');
+      if (p.emitEvery < 0.5) s.push('연발');
+      return s;
+    },
+  },
+
+  // ---------- 방치형 ----------
+  idle: {
+    ko: '방치형',
+    params(rnd) {
+      return {
+        ...common(rnd),
+        clickBase: +rnd.float(1, 5).toFixed(2),
+        clickStep: +rnd.float(1.6, 2.4).toFixed(2),
+        clickCost0: rnd.range(15, 40),
+        cost0: rnd.range(10, 30),
+        costMul: +rnd.float(1.14, 1.32).toFixed(3),
+        rate0: +rnd.float(0.4, 1.2).toFixed(2),
+        rateMul: +rnd.float(5, 9).toFixed(2),
+        lives: 1,
+        combo: false,
+        timeLimit: rnd.pick([90, 120, 180]),
+        timeUpMsg: '정산',
+      };
+    },
+    howto() { return '채집: Space / 클릭   ·   구매: 1 2 3 (생산기) · 4 (채집 강화)'; },
+    knobs: [
+      { k: 'clickBase', n: '기본 채집량', min: 0.5, max: 20, step: 0.5 },
+      { k: 'clickStep', n: '채집 강화 배수', min: 1.1, max: 4, step: 0.1 },
+      { k: 'clickCost0', n: '채집 강화 기본가', min: 5, max: 200, step: 5 },
+      { k: 'cost0', n: '생산기 기본가', min: 5, max: 200, step: 5 },
+      { k: 'costMul', n: '가격 상승률', min: 1.05, max: 1.6, step: 0.01 },
+      { k: 'rate0', n: '1단 생산량', min: 0.1, max: 5, step: 0.1 },
+      { k: 'rateMul', n: '단계별 배수', min: 2, max: 20, step: 0.5 },
+      { k: 'timeLimit', n: '한 판 길이(초)', min: 30, max: 300, step: 10 },
+    ],
+    derive(p) {
+      p.lives = 1;                                   // 죽는 개념이 없다
+      if (p.costMul <= 1.01) p.costMul = 1.05;       // 가격이 안 오르면 게임이 아니다
+      if (!p.timeLimit) p.timeLimit = 120;           // 끝나야 점수가 확정된다
+      p.timeUpMsg = '정산';
+    },
+    // 헤드리스 봇(초당 4회 채집 + 2초마다 구매)으로 8판 재서 맞춘 계수.
+    // 복리라 편차가 커서(실측 대비 0.7~6배) 정확한 값은 못 낸다 — 아케이드 목표는 넉넉한 쪽으로 잡는다.
+    est(p) {
+      return Math.round(p.timeLimit * p.timeLimit * p.rate0 * 0.5 + p.clickBase * p.timeLimit * 14);
+    },
+    mech(p) {
+      return ['눌러 모으고 생산기를 사서 자동화', `생산기 3종 · 가격 상승률 ${p.costMul}`, `${p.timeLimit}초 안에 총생산량 겨루기`];
+    },
+  },
+
 };
 
 export const FAMILY_KEYS = Object.keys(FAMILIES);
